@@ -55,14 +55,16 @@
         <h3>Session <span class="hint">(recorded by the extension)</span></h3>
         <dl class="facts">
           <dt>Monitoring</dt><dd><span id="wf-monitoring" class="pill">—</span></dd>
+          <dt>Auto-continue</dt><dd><span id="wf-auto" class="pill">—</span></dd>
           <dt>Cycle</dt><dd id="wf-cycle">—</dd>
           <dt>Phase</dt><dd id="wf-phase">—</dd>
           <dt>Last continuation</dt><dd id="wf-last-continuation">—</dd>
           <dt>Stop reason</dt><dd id="wf-stop-reason">—</dd>
         </dl>
-        <h3>Reported by ChatGPT <span class="hint">(as you recorded it — not verified)</span></h3>
+        <h3>Reported by ChatGPT <span class="hint">(its own claims — not verified)</span></h3>
         <dl class="facts">
-          <dt>Last review outcome</dt><dd id="rep-outcome">—</dd>
+          <dt>Last outcome</dt><dd id="rep-outcome">—</dd>
+          <dt>Status line in reply</dt><dd id="rep-status-line">—</dd>
         </dl>
       </div>
 
@@ -79,7 +81,7 @@
           <button type="button" id="btn-copy">Copy prompt</button>
           <button type="button" id="btn-insert">Insert into ChatGPT</button>
         </div>
-        <p class="hint">The extension never presses Send. You review and submit every prompt.</p>
+        <p class="hint">Copy and Insert never press Send. Only auto-continue, if you turn it on, sends prompts by itself.</p>
       </div>
 
       <div class="card">
@@ -148,7 +150,20 @@
             <input id="field-requireConfirmation" name="requireConfirmation" type="checkbox">
             <label for="field-requireConfirmation">Ask me to confirm before each prompt hand-off</label>
           </div>
-          <p class="hint">Submission is always manual. This option adds a confirmation step before a prompt is copied or inserted as a new cycle.</p>
+          <p class="hint">Applies to prompts you hand off yourself: adds a confirmation step before a prompt is copied or inserted as a new cycle.</p>
+          <div class="auto-box">
+            <div class="field checkbox">
+              <input id="field-autoContinue" name="autoContinue" type="checkbox" aria-describedby="auto-help err-autoContinue">
+              <label for="field-autoContinue"><strong>Auto-continue</strong> — send the next prompt automatically</label>
+            </div>
+            <p id="auto-help" class="hint">Off by default. When on, after a reply that ends with <code>AUTOPILOT STATUS: CONTINUE</code> the extension waits the delay below, re-checks the page, then inserts and sends the next prompt. It stops on MILESTONE COMPLETE, BLOCKED, a missing status line, a usage-limit or error message, an unrecognized page, or the cycle limit. It never retries or resends. Automating messages may conflict with OpenAI’s terms of use.</p>
+            <p id="err-autoContinue" class="field-error"></p>
+            <div class="field">
+              <label for="field-autoContinueDelaySeconds">Delay before each automatic send (seconds)</label>
+              <input id="field-autoContinueDelaySeconds" name="autoContinueDelaySeconds" type="number" min="30" max="900" step="1" aria-describedby="err-autoContinueDelaySeconds">
+              <p id="err-autoContinueDelaySeconds" class="field-error"></p>
+            </div>
+          </div>
           <p class="hint">Never enter tokens, passwords or cookies here. The extension stores none and rejects values that look like credentials.</p>
         </fieldset>
         <div class="actions">
@@ -196,10 +211,12 @@
           <li>When the response appears complete you get a notification. Read the reply, then <strong>Mark cycle reviewed</strong> and pick what ChatGPT reported: continue, milestone met, or blocked.</li>
           <li>The next prompt is prepared. Repeat until the milestone is met, a blocker needs you, the cycle limit is reached, or you stop.</li>
         </ol>
+        <h2>Auto-continue (optional)</h2>
+        <p>Turn it on in the Project tab to let the session run without you. You still send the <em>first</em> prompt. After that, whenever a reply ends with <code>AUTOPILOT STATUS: CONTINUE</code>, the next prompt is sent automatically after the delay. The session stops, and notifies you, on MILESTONE COMPLETE, BLOCKED, a missing status line, a usage-limit or error message, a page the extension cannot recognize, a closed tab, the cycle limit, or when you click Stop. Leave the ChatGPT tab open and the computer awake.</p>
         <h2>What the extension can and cannot know</h2>
         <ul>
           <li><strong>Observed:</strong> whether the ChatGPT page shows a stop control, a streaming marker, an error or usage-limit notice, and whether a new assistant message appeared. If the page does not expose this, the status is <em>Unknown</em>.</li>
-          <li><strong>Reported:</strong> anything about the repository or AUTOPILOT.md. The extension has no access to GitHub and does not read ChatGPT's replies; it only records what you choose when reviewing.</li>
+          <li><strong>Reported:</strong> anything about the repository or AUTOPILOT.md. The extension has no access to GitHub. It does not store ChatGPT's replies; it only reads the final <code>AUTOPILOT STATUS</code> line of the latest reply, and records what you choose when reviewing.</li>
           <li>A finished response is not proof that work succeeded, and a stopped response is not proof that the milestone is met.</li>
           <li>On a usage-limit message, monitoring pauses. Nothing is reloaded or resent.</li>
         </ul>

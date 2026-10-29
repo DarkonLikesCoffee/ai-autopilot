@@ -2,7 +2,7 @@
 // Written against minimal interfaces so tests can supply a fake document.
 
 import { ERROR_PATTERNS, USAGE_LIMIT_PATTERNS, type SelectorConfig } from './selectors.ts';
-import type { PageObservation, PageSignals, ResponseStatus } from '../shared/types.ts';
+import type { PageObservation, PageSignals, ReportedStatus, ResponseStatus } from '../shared/types.ts';
 
 export interface ElementLike {
   textContent: string | null;
@@ -17,6 +17,25 @@ export interface QueryRoot {
 
 /** Notice texts longer than this are not notices; they are not inspected. */
 const MAX_NOTICE_LENGTH = 600;
+
+/** Only this many characters at the end of the latest reply are looked at, and only for the status line. */
+const STATUS_TAIL_LENGTH = 300;
+
+// The status must be the last thing in the reply (Markdown emphasis and a full stop are tolerated),
+// so an echo of the instruction ("CONTINUE, MILESTONE COMPLETE or BLOCKED") never counts.
+const STATUS_LINE_RE = /AUTOPILOT STATUS\s*:?[\s*_`]*(CONTINUE|MILESTONE COMPLETE|BLOCKED)[\s*_`.!]*$/i;
+
+/**
+ * Maps the end of a reply to a status. The text is inspected in memory and
+ * discarded; only the resulting value leaves this function.
+ */
+export function readReportedStatus(replyText: string): ReportedStatus {
+  const tail = replyText.slice(-STATUS_TAIL_LENGTH).replace(/\u00a0/g, ' ').trimEnd();
+  const match = STATUS_LINE_RE.exec(tail);
+  if (!match) return 'missing';
+  const value = (match[1] ?? '').toUpperCase().replace(/\s+/g, ' ');
+  return value === 'CONTINUE' ? 'continue' : value === 'BLOCKED' ? 'blocked' : 'milestone_complete';
+}
 
 function safeQueryAll(root: QueryRoot, selector: string): ElementLike[] {
   try {
@@ -58,7 +77,7 @@ function noticeMatches(root: QueryRoot, selectors: SelectorConfig, patterns: Reg
   return false;
 }
 
-export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null } {
+export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null; reportedStatus: ReportedStatus | null } {
   const assistants = findVisible(root, selectors.assistantMessage);
   const last = assistants[assistants.length - 1];
   return {
@@ -72,6 +91,7 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       usageLimitNoticeFound: noticeMatches(root, selectors, USAGE_LIMIT_PATTERNS),
     },
     lastMessageId: last?.getAttribute(selectors.messageIdAttribute) ?? null,
+    reportedStatus: last ? readReportedStatus(last.textContent ?? '') : null,
   };
 }
 
@@ -103,6 +123,6 @@ export function responseKey(url: string, signals: PageSignals, lastMessageId: st
 }
 
 export function observePage(root: QueryRoot, url: string, selectors: SelectorConfig): PageObservation {
-  const { signals, lastMessageId } = readSignals(root, selectors);
-  return { status: classify(signals), responseKey: responseKey(url, signals, lastMessageId), url, signals };
+  const { signals, lastMessageId, reportedStatus } = readSignals(root, selectors);
+  return { status: classify(signals), responseKey: responseKey(url, signals, lastMessageId), url, reportedStatus, signals };
 }

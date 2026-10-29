@@ -4,7 +4,7 @@
 import type { UiSnapshot } from '../shared/messages.ts';
 import { activeProject } from '../shared/settings.ts';
 import type { ResponseStatus, ReviewOutcome } from '../shared/types.ts';
-import { STATUS_TEXT, STOP_REASON_TEXT } from '../shared/workflow.ts';
+import { REPORTED_STATUS_TEXT, STATUS_TEXT, STOP_REASON_TEXT } from '../shared/workflow.ts';
 
 export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
@@ -16,7 +16,8 @@ export interface DashboardModel {
   configProblems: string[];
   observed: { status: string; tone: Tone; updated: string; scope: string };
   workflow: { monitoring: string; monitoringTone: Tone; cycle: string; phase: string; lastContinuation: string; stopReason: string };
-  reported: { outcome: string };
+  reported: { outcome: string; statusLine: string };
+  auto: { label: string; tone: Tone };
   nextStep: string;
   prompt: { text: string; cycleLabel: string; errors: string[]; warnings: string[] };
   actions: {
@@ -59,6 +60,8 @@ export function formatTime(timestamp: number | null, now: number): string {
   return new Date(timestamp).toLocaleString();
 }
 
+const clock = (timestamp: number) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
 export function buildDashboard(snapshot: UiSnapshot, now: number): DashboardModel {
   const project = activeProject(snapshot.settings);
   const wf = snapshot.workflow;
@@ -85,9 +88,17 @@ export function buildDashboard(snapshot: UiSnapshot, now: number): DashboardMode
   else if (wf.monitoring === 'inactive' || wf.monitoring === 'stopped') nextStep = 'Start a session to prepare the first continuation prompt.';
   else if (wf.monitoring === 'paused' && wf.pauseReason === 'usage_limit') nextStep = 'ChatGPT showed a usage-limit message. Wait until you can continue, then resume. Nothing is resent automatically.';
   else if (wf.monitoring === 'paused') nextStep = 'Monitoring is paused. Resume when you want completion notifications again.';
+  else if (wf.autoSendDueAt !== null) nextStep = `Auto-continue will send prompt ${wf.cycle + 1} at ${clock(wf.autoSendDueAt)} after re-checking the page. Pause or Stop to prevent it.`;
   else if (wf.phase === 'ready') nextStep = `Copy or insert prompt ${wf.cycle + 1}, check it in ChatGPT, then press Send yourself.`;
+  else if (wf.phase === 'awaiting_response' && wf.autoContinue) nextStep = 'Waiting for ChatGPT. If the reply ends with AUTOPILOT STATUS: CONTINUE, the next prompt is sent automatically; anything else stops the session.';
   else if (wf.phase === 'awaiting_response') nextStep = 'Waiting for ChatGPT. You will be notified when the response appears complete.';
   else nextStep = 'Read ChatGPT’s reply (and the AUTOPILOT STATUS line), then mark the cycle reviewed.';
+
+  const sessionAuto = open ? wf.autoContinue : project?.autoContinue ?? false;
+  let auto: DashboardModel['auto'] = { label: 'Off — you send every prompt', tone: 'neutral' };
+  if (sessionAuto && wf.autoSendDueAt !== null) auto = { label: `On — next prompt sent at ${clock(wf.autoSendDueAt)}`, tone: 'warning' };
+  else if (sessionAuto && open) auto = { label: 'On — sends after each CONTINUE reply', tone: 'warning' };
+  else if (sessionAuto) auto = { label: 'On for the next session', tone: 'warning' };
 
   const observedScope = wf.trackedTabId !== null ? 'Tracked ChatGPT tab' : wf.conversationUrl ? 'Waiting for the tracked conversation to report' : 'Any open ChatGPT tab';
 
@@ -111,7 +122,11 @@ export function buildDashboard(snapshot: UiSnapshot, now: number): DashboardMode
       lastContinuation: formatTime(wf.lastContinuationAt, now),
       stopReason: wf.stopReason ? STOP_REASON_TEXT[wf.stopReason] : '—',
     },
-    reported: { outcome: wf.lastReviewOutcome ? OUTCOME_TEXT[wf.lastReviewOutcome] : '—' },
+    reported: {
+      outcome: wf.lastReviewOutcome ? OUTCOME_TEXT[wf.lastReviewOutcome] : '—',
+      statusLine: wf.lastReportedStatus ? REPORTED_STATUS_TEXT[wf.lastReportedStatus] : '—',
+    },
+    auto,
     nextStep,
     prompt: {
       text: snapshot.prompt?.text ?? '',

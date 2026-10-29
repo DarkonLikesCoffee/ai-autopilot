@@ -20,9 +20,9 @@ function run(state: WorkflowState, ...events: WorkflowEvent[]): TransitionResult
   return { ...result, effects };
 }
 
-const start = (now = 1): WorkflowEvent => ({ type: 'START_SESSION', projectId: 'p1', now });
+const start = (now = 1): WorkflowEvent => ({ type: 'START_SESSION', projectId: 'p1', autoContinue: false, autoDelayMs: 60_000, now });
 const handoff = (key: string | null = null, now = 2, tabId: number | null = TAB): WorkflowEvent => ({ type: 'PROMPT_HANDED_OFF', method: 'insert', tabId, currentResponseKey: key, maxCycles: MAX, now });
-const see = (o: ReturnType<typeof obs>, now = 3, tabId = TAB): WorkflowEvent => ({ type: 'OBSERVATION', tabId, observation: o, now });
+const see = (o: ReturnType<typeof obs>, now = 3, tabId = TAB): WorkflowEvent => ({ type: 'OBSERVATION', tabId, observation: o, maxCycles: MAX, now });
 const review = (outcome: 'continue' | 'milestone_reported' | 'blocker_reported' = 'continue', now = 9): WorkflowEvent => ({ type: 'MARK_REVIEWED', outcome, maxCycles: MAX, now });
 
 function started(): WorkflowState {

@@ -1,13 +1,14 @@
 // Service worker entry point: wires chrome.* APIs to the controller.
 
 import { createController, type TabAccess } from './controller.ts';
-import { isContentReport, isPageObservation, isUiRequest, type ContentCommand, type InsertResult } from '../shared/messages.ts';
+import { isContentReport, isPageObservation, isUiRequest, type ContentCommand, type InsertResult, type SubmitResult } from '../shared/messages.ts';
 import { createLogger } from '../shared/logger.ts';
 import { loadWorkflow } from '../shared/storage.ts';
 import type { WorkflowState } from '../shared/types.ts';
 
 const log = createLogger('background');
 const CHATGPT_PATTERNS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
+const AUTO_SEND_ALARM = 'autopilot-auto-send';
 
 export function isChatgptUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -51,10 +52,16 @@ const tabs: TabAccess = {
     const response = (await chrome.tabs.sendMessage(tabId, command)) as InsertResult | undefined;
     return response ?? { ok: false, error: 'The ChatGPT tab did not answer.' };
   },
+  async submit(tabId, text) {
+    const command: ContentCommand = { type: 'SUBMIT_PROMPT', text };
+    const response = (await chrome.tabs.sendMessage(tabId, command)) as SubmitResult | undefined;
+    return response ?? { ok: false, error: 'the ChatGPT tab did not answer' };
+  },
 };
 
 const BADGES: Record<string, { text: string; color: string; title: string }> = {
   needs_review: { text: 'DONE', color: '#1a7f37', title: 'Response appears complete. Review it.' },
+  auto_pending: { text: 'AUTO', color: '#8250df', title: 'The next prompt will be sent automatically' },
   generating: { text: '…', color: '#0969da', title: 'ChatGPT is generating' },
   paused: { text: 'II', color: '#9a6700', title: 'Monitoring paused' },
   limit: { text: '!', color: '#cf222e', title: 'Usage limit message shown' },
@@ -64,6 +71,7 @@ async function updateBadge(state: WorkflowState): Promise<void> {
   let badge: (typeof BADGES)[string] | null = null;
   if (state.monitoring === 'paused') badge = state.pauseReason === 'usage_limit' ? BADGES.limit! : BADGES.paused!;
   else if (state.monitoring === 'active' && state.phase === 'needs_review') badge = BADGES.needs_review!;
+  else if (state.monitoring === 'active' && state.autoSendDueAt !== null) badge = BADGES.auto_pending!;
   else if (state.monitoring === 'active' && state.responseStatus === 'generating') badge = BADGES.generating!;
   try {
     await chrome.action.setBadgeText({ text: badge?.text ?? '' });
@@ -77,6 +85,14 @@ async function updateBadge(state: WorkflowState): Promise<void> {
 const controller = createController({
   storage: chrome.storage.local,
   tabs,
+  alarm: {
+    async schedule(at) {
+      await chrome.alarms.create(AUTO_SEND_ALARM, { when: at });
+    },
+    async cancel() {
+      await chrome.alarms.clear(AUTO_SEND_ALARM);
+    },
+  },
   now: () => Date.now(),
   log,
   onStateChange: updateBadge,
@@ -110,6 +126,10 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return true; // keep the channel open for the async response
   }
   return false;
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTO_SEND_ALARM) void controller.handleAutoSendDue();
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => void controller.handleTabRemoved(tabId));

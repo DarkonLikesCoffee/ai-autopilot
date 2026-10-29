@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "ChatGPT Project Autopilot",
   "version": "0.1.0",
-  "description": "Prepares AUTOPILOT.md continuation prompts for ChatGPT and tells you when a response appears complete. You always press Send.",
+  "description": "Manages AUTOPILOT.md continuation prompts for ChatGPT: copy or insert them, get notified when a reply is done, or opt in to auto-continue.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "notifications", "sidePanel"],
+  "permissions": ["storage", "notifications", "sidePanel", "alarms"],
   "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
   "background": {
     "service_worker": "background.js"

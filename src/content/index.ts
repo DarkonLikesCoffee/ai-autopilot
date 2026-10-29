@@ -1,12 +1,14 @@
 // Content script for chatgpt.com. Observes page state, reports status changes
-// to the background worker and inserts prompts on request. It does not read,
-// store or send the text of any conversation message.
+// to the background worker and inserts prompts on request (and, only when
+// auto-continue is on, sends them). It does not store or send the text of any
+// conversation message; the end of the latest reply is inspected in memory for
+// the AUTOPILOT STATUS line only.
 
-import { INSERT_FAILURE_TEXT, insertPrompt } from './composer.ts';
+import { INSERT_FAILURE_TEXT, SUBMIT_FAILURE_TEXT, insertPrompt, submitPrompt } from './composer.ts';
 import { createDetector } from './detector.ts';
 import { observePage } from './page.ts';
 import { DEFAULT_SELECTORS } from './selectors.ts';
-import type { ContentCommand, ContentReport, InsertResult } from '../shared/messages.ts';
+import type { ContentCommand, ContentReport, InsertResult, SubmitResult } from '../shared/messages.ts';
 import { createLogger } from '../shared/logger.ts';
 
 const log = createLogger('content');
@@ -73,6 +75,14 @@ function start(): void {
         : { ok: false, error: INSERT_FAILURE_TEXT[outcome.reason], code: outcome.reason };
       sendResponse(result);
       return false;
+    }
+    if (message.type === 'SUBMIT_PROMPT' && typeof message.text === 'string') {
+      const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+      void submitPrompt(document, DEFAULT_SELECTORS, message.text, sleep).then((outcome) => {
+        const result: SubmitResult = outcome.ok ? { ok: true } : { ok: false, error: SUBMIT_FAILURE_TEXT[outcome.reason], code: outcome.reason };
+        sendResponse(result);
+      });
+      return true; // async response
     }
     return false;
   });

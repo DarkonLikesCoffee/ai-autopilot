@@ -44,10 +44,16 @@ export type ContentReport =
 /** background -> content */
 export type ContentCommand =
   | { type: 'INSERT_PROMPT'; text: string; overwrite?: boolean }
+  /** Auto-continue only: insert into an empty composer and press Send. */
+  | { type: 'SUBMIT_PROMPT'; text: string }
   | { type: 'GET_OBSERVATION' };
 
 export type InsertResult =
   | { ok: true; verified: boolean }
+  | { ok: false; error: string; code?: string };
+
+export type SubmitResult =
+  | { ok: true }
   | { ok: false; error: string; code?: string };
 
 export type { HandoffMethod };
@@ -63,6 +69,7 @@ export function isUiRequest(value: unknown): value is UiRequest {
   return typeof type === 'string' && UI_TYPES.has(type as UiRequest['type']);
 }
 
+const REPORTED_VALUES = new Set(['continue', 'milestone_complete', 'blocked', 'missing']);
 const STATUS_VALUES = new Set(['unknown', 'idle', 'generating', 'complete', 'error', 'usage_limit']);
 
 export function isPageObservation(value: unknown): value is PageObservation {
@@ -71,6 +78,7 @@ export function isPageObservation(value: unknown): value is PageObservation {
   return (
     typeof o.status === 'string' && STATUS_VALUES.has(o.status) &&
     (o.responseKey === null || typeof o.responseKey === 'string') &&
+    (o.reportedStatus === null || o.reportedStatus === undefined || (typeof o.reportedStatus === 'string' && REPORTED_VALUES.has(o.reportedStatus))) &&
     typeof o.url === 'string' &&
     !!o.signals && typeof o.signals === 'object'
   );

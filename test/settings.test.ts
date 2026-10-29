@@ -94,3 +94,15 @@ test('settings store recovery: missing data is clean, corrupt data is flagged', 
   assert.equal(dup.store.projects.length, 1);
   assert.equal(dup.store.activeProjectId, 'p1');
 });
+
+test('auto-continue is off by default and validated when on', () => {
+  assert.equal(defaultProject('x').autoContinue, false);
+  assert.equal(validateProject(validProject({ autoContinue: true })).valid, true);
+  for (const delay of [0, 29, 901, 45.5]) {
+    const fieldsWithDelay = validateProject(validProject({ autoContinueDelaySeconds: delay })).errors.map((e) => e.field);
+    assert.ok(fieldsWithDelay.includes('autoContinueDelaySeconds'), String(delay));
+  }
+  const noStatusLine = validateProject(validProject({ autoContinue: true, promptTemplate: 'Read {{autopilotPath}} and continue.' }));
+  assert.match(noStatusLine.errors.map((e) => e.message).join(' '), /AUTOPILOT STATUS/);
+  assert.equal(validateProject(validProject({ autoContinue: false, promptTemplate: 'Read {{autopilotPath}} and continue.' })).valid, true);
+});

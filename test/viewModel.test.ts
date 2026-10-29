@@ -56,7 +56,7 @@ test('observed and reported information are labelled separately', () => {
   const m = buildDashboard(snap({ monitoring: 'stopped', stopReason: 'milestone_reported', lastReviewOutcome: 'milestone_reported', responseStatus: 'unknown' }), 0);
   assert.equal(m.observed.status, 'Unknown');
   assert.match(m.reported.outcome, /as reported by ChatGPT, not verified/);
-  assert.match(m.workflow.stopReason, /You recorded/);
+  assert.match(m.workflow.stopReason, /not verified/);
   assert.equal(m.actions.reset, true);
   assert.equal(m.actions.start, true);
 });
@@ -80,4 +80,14 @@ test('invalid configuration lists the problems and blocks start', () => {
 test('recovered storage is surfaced', () => {
   assert.ok(buildDashboard(snap({ recoveredFromCorruption: true }), 0).recoveredNotice);
   assert.equal(buildDashboard(snap(), 0).recoveredNotice, null);
+});
+
+test('auto-continue state is shown, including the scheduled send time', () => {
+  assert.match(buildDashboard(snap({ monitoring: 'active' }), 0).auto.label, /^Off/);
+  const pending = buildDashboard(snap({ monitoring: 'active', autoContinue: true, autoSendDueAt: 90_000, cycle: 1, lastReportedStatus: 'continue' }), 0);
+  assert.match(pending.auto.label, /next prompt sent at/);
+  assert.match(pending.nextStep, /Auto-continue will send prompt 2/);
+  assert.equal(pending.reported.statusLine, 'CONTINUE');
+  const waiting = buildDashboard(snap({ monitoring: 'active', autoContinue: true, phase: 'awaiting_response', cycle: 1 }), 0);
+  assert.match(waiting.nextStep, /anything else stops the session/);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, observePage, readSignals } from '../src/content/page.ts';
+import { classify, observePage, readReportedStatus, readSignals } from '../src/content/page.ts';
 import { DEFAULT_SELECTORS, type SelectorConfig } from '../src/content/selectors.ts';
 import { CONVO, fakePage, fakeRoot, signals } from './helpers/fixtures.ts';
 
@@ -92,4 +92,31 @@ test('observations carry no message text', () => {
   const o = observePage(root, CONVO, DEFAULT_SELECTORS);
   assert.doesNotMatch(JSON.stringify(o), /SECRET/);
   assert.equal(readSignals(root, DEFAULT_SELECTORS).signals.assistantMessageCount, 1);
+});
+
+test('the final AUTOPILOT STATUS line is read; nothing else counts', () => {
+  assert.equal(readReportedStatus('Done the work.\n\nAUTOPILOT STATUS: CONTINUE'), 'continue');
+  assert.equal(readReportedStatus('…\n**AUTOPILOT STATUS: MILESTONE COMPLETE**\n'), 'milestone_complete');
+  assert.equal(readReportedStatus('…\nAUTOPILOT STATUS: `BLOCKED`.'), 'blocked');
+  assert.equal(readReportedStatus('…\nautopilot status:   continue'), 'continue');
+  assert.equal(readReportedStatus('No status line here.'), 'missing');
+  assert.equal(readReportedStatus(''), 'missing');
+  // Must be the last thing in the reply.
+  assert.equal(readReportedStatus('AUTOPILOT STATUS: CONTINUE\nThen I will do more.'), 'missing');
+  // An echo of the instruction is not a status.
+  assert.equal(readReportedStatus('I will end with AUTOPILOT STATUS: CONTINUE, MILESTONE COMPLETE or BLOCKED'), 'missing');
+});
+
+test('the observation carries only the status value from the latest reply', () => {
+  const root = fakeRoot({
+    '#prompt-textarea': [{}],
+    '[data-message-author-role="assistant"]': [
+      { text: 'old reply\nAUTOPILOT STATUS: BLOCKED', attrs: { 'data-message-id': 'm1' } },
+      { text: 'SECRET body text\nAUTOPILOT STATUS: CONTINUE', attrs: { 'data-message-id': 'm2' } },
+    ],
+  });
+  const o = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(o.reportedStatus, 'continue');
+  assert.doesNotMatch(JSON.stringify(o), /SECRET/);
+  assert.equal(observePage(fakePage({}), CONVO, DEFAULT_SELECTORS).reportedStatus, null);
 });

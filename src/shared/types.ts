@@ -15,6 +15,12 @@ export interface ProjectSettings {
   showNotifications: boolean;
   /** Ask for an extra confirmation before a prompt is handed off (copied or inserted). */
   requireConfirmation: boolean;
+  /**
+   * Opt-in: after a response ends with "AUTOPILOT STATUS: CONTINUE", insert and
+   * send the next prompt automatically after a delay. Off by default.
+   */
+  autoContinue: boolean;
+  autoContinueDelaySeconds: number;
 }
 
 export interface SettingsStore {
@@ -49,7 +55,18 @@ export type StopReason =
   | 'max_cycles_reached'
   | 'milestone_reported'
   | 'blocker_reported'
-  | 'project_changed';
+  | 'project_changed'
+  | 'usage_limit'
+  | 'page_error'
+  | 'status_line_missing'
+  | 'auto_send_failed';
+
+/**
+ * The "AUTOPILOT STATUS:" line at the very end of the latest assistant reply,
+ * as read by the content script. Only this value is kept, never the text.
+ * "missing" means the reply did not end with a recognizable status line.
+ */
+export type ReportedStatus = 'continue' | 'milestone_complete' | 'blocked' | 'missing';
 
 export type PauseReason = 'user' | 'usage_limit';
 
@@ -85,6 +102,13 @@ export interface WorkflowState {
   stopReason: StopReason | null;
   /** Set when stored state was unreadable and replaced with defaults. */
   recoveredFromCorruption: boolean;
+  /** Auto-continue settings captured for this session. */
+  autoContinue: boolean;
+  autoDelayMs: number;
+  /** When set, the next prompt will be sent automatically at this time. */
+  autoSendDueAt: number | null;
+  /** Status line of the latest completed reply, as read from the page. */
+  lastReportedStatus: ReportedStatus | null;
   /** Bounded list of recent workflow events, newest last. Never contains ChatGPT message text. */
   log: WorkflowLogEntry[];
 }
@@ -100,6 +124,8 @@ export interface PageObservation {
   status: ResponseStatus;
   responseKey: string | null;
   url: string;
+  /** Status line at the end of the latest assistant reply; null when there is no reply. */
+  reportedStatus: ReportedStatus | null;
   /** Diagnostic: which signals were present, for the "why unknown" display. */
   signals: PageSignals;
 }

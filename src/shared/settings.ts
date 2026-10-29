@@ -6,6 +6,9 @@ import type { ProjectSettings, SettingsStore, ValidationIssue, ValidationResult 
 export const MAX_CYCLES_LIMIT = 100;
 export const MAX_TEMPLATE_LENGTH = 8000;
 export const MAX_RULES_LENGTH = 4000;
+// chrome.alarms cannot fire sooner than 30 seconds in a packed extension.
+export const MIN_AUTO_DELAY_SECONDS = 30;
+export const MAX_AUTO_DELAY_SECONDS = 900;
 
 export function newProjectId(): string {
   return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -24,6 +27,8 @@ export function defaultProject(id: string = newProjectId()): ProjectSettings {
     maxCyclesPerSession: 10,
     showNotifications: true,
     requireConfirmation: true,
+    autoContinue: false,
+    autoContinueDelaySeconds: 60,
   };
 }
 
@@ -106,6 +111,14 @@ export function validateProject(project: ProjectSettings): ValidationResult {
     err('maxCyclesPerSession', `Maximum cycles must be a whole number from 1 to ${MAX_CYCLES_LIMIT}.`);
   }
 
+  const delay = project.autoContinueDelaySeconds;
+  if (!Number.isInteger(delay) || delay < MIN_AUTO_DELAY_SECONDS || delay > MAX_AUTO_DELAY_SECONDS) {
+    err('autoContinueDelaySeconds', `The auto-continue delay must be a whole number of seconds from ${MIN_AUTO_DELAY_SECONDS} to ${MAX_AUTO_DELAY_SECONDS}.`);
+  }
+  if (project.autoContinue && !/AUTOPILOT STATUS/.test(project.promptTemplate)) {
+    err('promptTemplate', 'Auto-continue needs the template to ask ChatGPT to end its reply with an "AUTOPILOT STATUS:" line (the default template does).');
+  }
+
   const textFields: (keyof ProjectSettings)[] = ['projectName', 'repositoryUrl', 'milestone', 'promptTemplate', 'projectRules'];
   for (const field of textFields) {
     const value = project[field];
@@ -126,7 +139,7 @@ export function normalizeProject(raw: unknown): ProjectSettings | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || !r.id) return null;
   const d = defaultProject(r.id);
-  const max = typeof r.maxCyclesPerSession === 'number' && Number.isFinite(r.maxCyclesPerSession) ? Math.trunc(r.maxCyclesPerSession) : d.maxCyclesPerSession;
+  const int = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : fallback);
   return {
     id: r.id,
     projectName: str(r.projectName, d.projectName),
@@ -136,9 +149,11 @@ export function normalizeProject(raw: unknown): ProjectSettings | null {
     autopilotPath: str(r.autopilotPath, d.autopilotPath),
     promptTemplate: str(r.promptTemplate, d.promptTemplate),
     projectRules: str(r.projectRules, d.projectRules),
-    maxCyclesPerSession: max,
+    maxCyclesPerSession: int(r.maxCyclesPerSession, d.maxCyclesPerSession),
     showNotifications: bool(r.showNotifications, d.showNotifications),
     requireConfirmation: bool(r.requireConfirmation, d.requireConfirmation),
+    autoContinue: bool(r.autoContinue, d.autoContinue),
+    autoContinueDelaySeconds: int(r.autoContinueDelaySeconds, d.autoContinueDelaySeconds),
   };
 }
 

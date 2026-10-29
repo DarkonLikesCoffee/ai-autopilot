@@ -38,6 +38,7 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Ch
 </form>
 <script>
   window.__submissions = 0;
+  window.__finalStatus = '';
   let n = 0;
   const controls = document.getElementById('controls');
   function setGenerating(on) {
@@ -67,7 +68,12 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Ch
     let chunks = 0;
     const timer = setInterval(() => {
       answer.append(document.createTextNode(' chunk' + chunks + ' (mentions usage limit and something went wrong)'));
-      if (++chunks === 12) { clearInterval(timer); setGenerating(false); }
+      if (++chunks === 12) {
+        clearInterval(timer);
+        // Like a real reply following the template: the status line comes last.
+        if (window.__finalStatus) answer.append(document.createTextNode('\\n\\nAUTOPILOT STATUS: ' + window.__finalStatus));
+        setGenerating(false);
+      }
     }, 150);
   };
   window.__rerender = () => {
@@ -223,6 +229,49 @@ try {
   await panel2.locator('#confirm-dialog[open] button[value="ok"]').click();
   await waitFor('stopped', async () => (await workflowState(worker)).monitoring === 'stopped');
   check('stop ends the session', (await workflowState(worker)).stopReason === 'user_stopped');
+
+  // ---- Auto-continue (opt-in) ----
+  await panel2.click('#btn-reset');
+  await panel2.click('#tab-project');
+  await panel2.check('#field-autoContinue');
+  await panel2.fill('#field-autoContinueDelaySeconds', '30');
+  await panel2.click('#btn-save');
+  await panel2.waitForSelector('#confirm-dialog[open]');
+  check('turning on auto-continue shows a warning', (await panel2.textContent('#confirm-message')).includes('SEND the next prompt by itself'));
+  await panel2.locator('#confirm-dialog[open] button[value="ok"]').click();
+  await waitFor('auto saved', async () => (await panel2.textContent('#banner'))?.includes('Project saved'));
+  await panel2.click('#tab-dashboard');
+
+  const chat3 = await context.newPage();
+  await chat3.goto('https://chatgpt.com/c/e2e-auto');
+  await chat3.waitForSelector('#prompt-textarea');
+  await chat3.evaluate(() => { window.__finalStatus = 'CONTINUE'; });
+  await chat2.close();
+  await panel2.bringToFront();
+  await panel2.click('#btn-start');
+  await waitFor('auto session', async () => (await workflowState(worker)).monitoring === 'active');
+  await waitFor('insert enabled', () => panel2.isEnabled('#btn-insert'));
+  await panel2.click('#btn-insert');
+  await confirmIfAsked(panel2);
+  await waitFor('inserted', async () => (await workflowState(worker)).cycle === 1);
+  check('the first prompt is not sent automatically', (await chat3.evaluate(() => window.__submissions)) === 0);
+  await chat3.click('[data-testid="send-button"]'); // the user sends the first prompt
+  await waitFor('send scheduled', async () => (await workflowState(worker)).autoSendDueAt !== null, 15000);
+  state = await workflowState(worker);
+  check('a CONTINUE reply schedules the next send', state.phase === 'ready' && state.lastReportedStatus === 'continue');
+  // The second reply ends the milestone, so the run should stop after exactly one automatic send.
+  await chat3.evaluate(() => { window.__finalStatus = 'MILESTONE COMPLETE'; });
+  await waitFor('automatic send', async () => (await chat3.evaluate(() => window.__submissions)) === 2, 60000);
+  await waitFor('cycle 2 recorded', async () => (await workflowState(worker)).cycle >= 2, 10000);
+  check('the next prompt was sent automatically and counted as cycle 2', (await workflowState(worker)).cycle === 2);
+  const sentText = await chat3.evaluate(() => [...document.querySelectorAll('[data-message-author-role="user"]')].at(-1).textContent);
+  check('the automatic prompt is the rendered continuation prompt', sentText.includes('continuation 2 of at most 2'));
+  await waitFor('milestone stop', async () => (await workflowState(worker)).monitoring === 'stopped', 15000);
+  state = await workflowState(worker);
+  check('MILESTONE COMPLETE stops auto-continue', state.stopReason === 'milestone_reported');
+  await new Promise((r) => setTimeout(r, 2000));
+  check('nothing else was sent', (await chat3.evaluate(() => window.__submissions)) === 2);
+  check('auto alarm cleared', (await worker.evaluate(() => chrome.alarms.getAll())).length === 0);
 
   await context.close();
 } catch (error) {

@@ -15,7 +15,14 @@ interface Harness {
   storage: MemoryStorage;
   notifications: NotifyEffect[];
   inserts: { tabId: number; text: string; overwrite: boolean }[];
-  page: { tabId: number | null; observation: PageObservation | null; insertResult: Awaited<ReturnType<TabAccess['insert']>> };
+  submits: { tabId: number; text: string }[];
+  alarm: { scheduledAt: number | null; history: (number | null)[] };
+  page: {
+    tabId: number | null;
+    observation: PageObservation | null;
+    insertResult: Awaited<ReturnType<TabAccess['insert']>>;
+    submitResult: Awaited<ReturnType<TabAccess['submit']>>;
+  };
   ui: (request: UiRequest) => Promise<UiResponse>;
   controller: ReturnType<typeof createController>;
   clock: { now: number };
@@ -24,7 +31,9 @@ interface Harness {
 function harness(storage = new MemoryStorage()): Harness {
   const notifications: NotifyEffect[] = [];
   const inserts: Harness['inserts'] = [];
-  const page: Harness['page'] = { tabId: 5, observation: obs('complete', '/c/abc|id:old'), insertResult: { ok: true, verified: true } };
+  const submits: Harness['submits'] = [];
+  const alarm: Harness['alarm'] = { scheduledAt: null, history: [] };
+  const page: Harness['page'] = { tabId: 5, observation: obs('complete', '/c/abc|id:old'), insertResult: { ok: true, verified: true }, submitResult: { ok: true } };
   const clock = { now: 1000 };
   const tabs: TabAccess = {
     findTargetTab: async () => page.tabId,
@@ -34,9 +43,17 @@ function harness(storage = new MemoryStorage()): Harness {
       inserts.push({ tabId, text, overwrite });
       return page.insertResult;
     },
+    submit: async (tabId, text) => {
+      submits.push({ tabId, text });
+      return page.submitResult;
+    },
   };
-  const controller = createController({ storage, tabs, notify: async (e) => void notifications.push(e), now: () => (clock.now += 10), log: quiet });
-  return { storage, notifications, inserts, page, controller, clock, ui: (r) => controller.handleUi(r) };
+  const alarmAccess = {
+    schedule: async (at: number) => { alarm.scheduledAt = at; alarm.history.push(at); },
+    cancel: async () => { alarm.scheduledAt = null; alarm.history.push(null); },
+  };
+  const controller = createController({ storage, tabs, alarm: alarmAccess, notify: async (e) => void notifications.push(e), now: () => (clock.now += 10), log: quiet });
+  return { storage, notifications, inserts, submits, alarm, page, controller, clock, ui: (r) => controller.handleUi(r) };
 }
 
 async function withProject(h: Harness, overrides: Partial<ProjectSettings> = {}): Promise<UiResponse> {
@@ -265,4 +282,123 @@ test('the prompt preview cycle number follows the workflow', () => {
   assert.equal(nextPromptCycle({ ...s, monitoring: 'active', phase: 'ready', cycle: 2 }), 3);
   assert.equal(nextPromptCycle({ ...s, monitoring: 'active', phase: 'awaiting_response', cycle: 2 }), 2);
   assert.equal(nextPromptCycle({ ...s, monitoring: 'paused', phase: 'needs_review', cycle: 2 }), 3);
+});
+
+// ---- Auto-continue through the controller ----------------------------------------
+
+async function autoSession(h: Harness): Promise<void> {
+  await withProject(h, { autoContinue: true, autoContinueDelaySeconds: 30, maxCyclesPerSession: 5 });
+  ok(await h.ui({ type: 'START_SESSION' }));
+  ok(await h.ui({ type: 'INSERT_PROMPT' })); // the first prompt is always yours
+}
+
+async function finishReply(h: Harness, id: string, status: 'continue' | 'blocked' | 'missing' | 'milestone_complete') {
+  await h.controller.handleContent(5, { type: 'PAGE_OBSERVATION', observation: obs('generating', `/c/abc|id:${id}`) });
+  h.page.observation = obs('complete', `/c/abc|id:${id}`, undefined, status);
+  await h.controller.handleContent(5, { type: 'PAGE_OBSERVATION', observation: h.page.observation });
+}
+
+test('auto-continue: CONTINUE schedules an alarm; when due the next prompt is sent once', async () => {
+  const h = harness();
+  await autoSession(h);
+  await finishReply(h, 'r1', 'continue');
+  let state = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow;
+  assert.equal(state.phase, 'ready');
+  assert.ok(h.alarm.scheduledAt !== null);
+  assert.equal(h.alarm.scheduledAt, state.autoSendDueAt);
+  assert.equal(h.submits.length, 0, 'nothing is sent before the delay');
+
+  // An early wake-up does nothing but re-arm the alarm.
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 0);
+
+  h.clock.now += 31_000;
+  await Promise.all([h.controller.handleAutoSendDue(), h.controller.handleAutoSendDue()]);
+  assert.equal(h.submits.length, 1, 'two alarms still send only once');
+  assert.match(h.submits[0]!.text, /continuation 2 of at most 5/);
+  state = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow;
+  assert.equal(state.cycle, 2);
+  assert.equal(state.phase, 'awaiting_response');
+  assert.equal(state.autoSendDueAt, null);
+  assert.equal(h.alarm.scheduledAt, null);
+  assert.equal(h.inserts.length, 1, 'only the first, manual prompt used Insert');
+});
+
+for (const [label, change] of [
+  ['the page is generating again', (h: Harness) => { h.page.observation = obs('generating', '/c/abc|id:r1'); }],
+  ['the conversation changed', (h: Harness) => { h.page.observation = obs('complete', '/c/abc|id:other', undefined, 'continue'); }],
+  ['the page is unrecognizable', (h: Harness) => { h.page.observation = obs('unknown', '/c/abc|id:r1'); }],
+  ['the tab is gone', (h: Harness) => { h.page.tabId = null; }],
+  ['the content script does not answer', (h: Harness) => { h.page.observation = null; }],
+] as const) {
+  test(`auto-continue: nothing is sent and the session stops when ${label}`, async () => {
+    const h = harness();
+    await autoSession(h);
+    await finishReply(h, 'r1', 'continue');
+    change(h);
+    h.clock.now += 31_000;
+    await h.controller.handleAutoSendDue();
+    assert.equal(h.submits.length, 0);
+    const state = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow;
+    assert.equal(state.monitoring, 'stopped');
+    assert.equal(state.stopReason, 'auto_send_failed');
+    assert.ok(h.notifications.some((n) => n.kind === 'session_ended'));
+  });
+}
+
+test('auto-continue: a failed send stops the session and is never retried', async () => {
+  const h = harness();
+  await autoSession(h);
+  await finishReply(h, 'r1', 'continue');
+  h.page.submitResult = { ok: false, error: 'Send was clicked but the page did not confirm', code: 'submit_unverified' };
+  h.clock.now += 31_000;
+  await h.controller.handleAutoSendDue();
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 1);
+  const state = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow;
+  assert.equal(state.stopReason, 'auto_send_failed');
+  assert.match(state.log.at(-1)?.message ?? '', /did not confirm/);
+});
+
+test('auto-continue: BLOCKED stops without sending', async () => {
+  const h = harness();
+  await autoSession(h);
+  await finishReply(h, 'r1', 'blocked');
+  h.clock.now += 31_000;
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 0);
+  assert.equal(ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow.stopReason, 'blocker_reported');
+});
+
+test('auto-continue: pausing or turning it off before the alarm prevents the send', async () => {
+  const h = harness();
+  await autoSession(h);
+  await finishReply(h, 'r1', 'continue');
+  ok(await h.ui({ type: 'PAUSE' }));
+  assert.equal(h.alarm.scheduledAt, null);
+  h.clock.now += 31_000;
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 0);
+
+  const project = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.settings.projects[0]!;
+  ok(await h.ui({ type: 'SAVE_PROJECT', project: { ...project, autoContinue: false } }));
+  ok(await h.ui({ type: 'RESUME' }));
+  const state = ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow;
+  assert.equal(state.autoContinue, false);
+  assert.equal(state.autoSendDueAt, null);
+  h.clock.now += 31_000;
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 0);
+});
+
+test('auto-continue off: an alarm never sends anything', async () => {
+  const h = harness();
+  await withProject(h);
+  ok(await h.ui({ type: 'START_SESSION' }));
+  ok(await h.ui({ type: 'INSERT_PROMPT' }));
+  await finishReply(h, 'r1', 'continue');
+  h.clock.now += 1_000_000;
+  await h.controller.handleAutoSendDue();
+  assert.equal(h.submits.length, 0);
+  assert.equal(ok(await h.ui({ type: 'GET_SNAPSHOT' })).snapshot.workflow.phase, 'needs_review');
 });

@@ -140,6 +140,9 @@ function renderDashboard(model: DashboardModel, snap: UiSnapshot): void {
   setText('wf-last-continuation', model.workflow.lastContinuation);
   setText('wf-stop-reason', model.workflow.stopReason);
   setText('rep-outcome', model.reported.outcome);
+  setText('rep-status-line', model.reported.statusLine);
+  setText('wf-auto', model.auto.label);
+  setTone('wf-auto', model.auto.tone);
   setText('next-step', model.nextStep);
   setText('prompt-cycle', model.prompt.cycleLabel);
   const preview = $<HTMLTextAreaElement>('prompt-preview');
@@ -195,7 +198,15 @@ function renderProjectSelect(snap: UiSnapshot): void {
   select.disabled = snap.settings.projects.length === 0;
 }
 
-const FORM_FIELDS = ['projectName', 'repositoryUrl', 'defaultBranch', 'milestone', 'autopilotPath', 'promptTemplate', 'projectRules', 'maxCyclesPerSession', 'showNotifications', 'requireConfirmation'] as const;
+const FORM_FIELDS = [
+  'projectName', 'repositoryUrl', 'defaultBranch', 'milestone', 'autopilotPath', 'promptTemplate', 'projectRules',
+  'maxCyclesPerSession', 'showNotifications', 'requireConfirmation', 'autoContinue', 'autoContinueDelaySeconds',
+] as const;
+
+const AUTO_CONTINUE_WARNING =
+  'Auto-continue will insert and SEND the next prompt by itself whenever a ChatGPT reply ends with "AUTOPILOT STATUS: CONTINUE". ' +
+  'It stops on MILESTONE COMPLETE, BLOCKED, a missing status line, a usage-limit or error message, an unrecognized page, or the cycle limit, and it never retries or resends. ' +
+  'Automating messages on a ChatGPT account may conflict with OpenAI\u2019s terms of use; you accept that risk. Turn it on?';
 
 function formElement(name: string): HTMLInputElement | HTMLTextAreaElement | null {
   const form = $<HTMLFormElement>('project-form');
@@ -232,6 +243,8 @@ function readForm(base: ProjectSettings): ProjectSettings {
   next.maxCyclesPerSession = Number(text('maxCyclesPerSession'));
   next.showNotifications = checked('showNotifications');
   next.requireConfirmation = checked('requireConfirmation');
+  next.autoContinue = checked('autoContinue');
+  next.autoContinueDelaySeconds = Number(text('autoContinueDelaySeconds'));
   return next;
 }
 
@@ -273,7 +286,7 @@ async function handOff(method: 'copy' | 'insert'): Promise<void> {
     const verb = method === 'insert' ? 'insert continuation prompt' : 'copy continuation prompt';
     const ok = await confirmDialog(
       `This will ${verb} ${snapshot.prompt?.cycle ?? ''} and count it as cycle ${snapshot.workflow.cycle + 1}. ` +
-        'The extension never sends messages: review the prompt in ChatGPT and press Send yourself.',
+        'Copy and Insert never send: review the prompt in ChatGPT and press Send yourself.',
       method === 'insert' ? 'Insert prompt' : 'Copy prompt',
     );
     if (!ok) return;
@@ -360,8 +373,10 @@ function setupForm(): void {
     const project = snapshot ? activeProject(snapshot.settings) : null;
     if (!project) return;
     void (async () => {
+      const edited = readForm(project);
+      if (edited.autoContinue && !project.autoContinue && !(await confirmDialog(AUTO_CONTINUE_WARNING, 'Turn on auto-continue'))) return;
       formDirty = false;
-      const response = await act({ type: 'SAVE_PROJECT', project: readForm(project) }, $<HTMLButtonElement>('btn-save'));
+      const response = await act({ type: 'SAVE_PROJECT', project: edited }, $<HTMLButtonElement>('btn-save'));
       if (!response.ok) formDirty = true;
       else if (response.snapshot) fillForm(activeProject(response.snapshot.settings));
     })();

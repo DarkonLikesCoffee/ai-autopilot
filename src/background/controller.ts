@@ -3,7 +3,7 @@
 // one at a time and always start from persisted state, because Chrome may
 // stop the service worker between events.
 
-import type { ContentReport, InsertResult, UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
+import type { ContentReport, InsertResult, SubmitResult, UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
 import type { Logger } from '../shared/logger.ts';
 import { activeProject, defaultProject, looksLikeSecret, normalizeProject, validateProject } from '../shared/settings.ts';
 import { createSerialQueue, loadSettings, loadWorkflow, saveSettings, saveWorkflow, type StorageAreaLike } from '../shared/storage.ts';
@@ -18,11 +18,20 @@ export interface TabAccess {
   /** Asks the content script in a tab for a fresh observation; null if it does not answer. */
   getObservation(tabId: number): Promise<PageObservation | null>;
   insert(tabId: number, text: string, overwrite: boolean): Promise<InsertResult>;
+  /** Auto-continue only: insert into an empty composer and press Send once. */
+  submit(tabId: number, text: string): Promise<SubmitResult>;
+}
+
+/** Wakes the service worker when an automatic send is due (chrome.alarms in production). */
+export interface AutoSendAlarm {
+  schedule(at: number): Promise<void>;
+  cancel(): Promise<void>;
 }
 
 export interface ControllerDeps {
   storage: StorageAreaLike;
   tabs: TabAccess;
+  alarm: AutoSendAlarm;
   notify(effect: NotifyEffect): Promise<void>;
   onStateChange?(state: WorkflowState): Promise<void> | void;
   now(): number;
@@ -34,6 +43,8 @@ export interface Controller {
   handleContent(tabId: number, report: ContentReport): Promise<void>;
   handleTabRemoved(tabId: number): Promise<void>;
   handleStartup(): Promise<void>;
+  /** Called when the auto-send alarm fires. Re-checks everything before sending. */
+  handleAutoSendDue(): Promise<void>;
 }
 
 class UserError extends Error {
@@ -70,6 +81,15 @@ export function createController(deps: ControllerDeps): Controller {
     if (result.state !== workflow) {
       await saveWorkflow(storage, result.state);
       await deps.onStateChange?.(result.state);
+      // The alarm always mirrors the persisted schedule.
+      if (result.state.autoSendDueAt !== workflow.autoSendDueAt) {
+        try {
+          if (result.state.autoSendDueAt === null) await deps.alarm.cancel();
+          else await deps.alarm.schedule(result.state.autoSendDueAt);
+        } catch (error) {
+          log.warn('Could not update the auto-send alarm', error);
+        }
+      }
     }
     const project = activeProject(settings);
     const allowNotifications = project?.showNotifications ?? true;
@@ -83,6 +103,8 @@ export function createController(deps: ControllerDeps): Controller {
     }
     return result;
   }
+
+  const maxCyclesOf = (settings: SettingsStore) => activeProject(settings)?.maxCyclesPerSession ?? 1;
 
   /** Keeps the workflow bound to the active project. */
   async function reconcile(settings: SettingsStore, workflow: WorkflowState): Promise<WorkflowState> {
@@ -137,7 +159,7 @@ export function createController(deps: ControllerDeps): Controller {
     if (tabId === null) return workflow;
     const observation = await safeObservation(tabId);
     if (!observation) return workflow;
-    return (await apply(workflow, { type: 'OBSERVATION', tabId, observation, now: deps.now() }, settings)).state;
+    return (await apply(workflow, { type: 'OBSERVATION', tabId, observation, maxCycles: maxCyclesOf(settings), now: deps.now() }, settings)).state;
   }
 
   async function handle(request: UiRequest): Promise<UiResponse> {
@@ -179,6 +201,9 @@ export function createController(deps: ControllerDeps): Controller {
         const projects = exists ? settings.projects.map((p) => (p.id === project.id ? project : p)) : [...settings.projects, project];
         await saveStore({ ...settings, projects, activeProjectId: settings.activeProjectId ?? project.id });
         const validation = validateProject(project);
+        if (validation.valid && project.id === workflow.projectId) {
+          await run({ type: 'SET_AUTO_CONTINUE', enabled: project.autoContinue, delayMs: project.autoContinueDelaySeconds * 1000, now });
+        }
         note = validation.valid ? 'Project saved.' : 'Saved as a draft. Fix the highlighted fields before starting a session.';
         break;
       }
@@ -206,7 +231,7 @@ export function createController(deps: ControllerDeps): Controller {
       case 'START_SESSION': {
         const project = requireValidProject(settings);
         requirePrompt(project, workflow);
-        await run({ type: 'START_SESSION', projectId: project.id, now });
+        await run({ type: 'START_SESSION', projectId: project.id, autoContinue: project.autoContinue, autoDelayMs: project.autoContinueDelaySeconds * 1000, now });
         break;
       }
 
@@ -308,7 +333,7 @@ export function createController(deps: ControllerDeps): Controller {
         try {
           const { settings, workflow } = await load();
           const current = await reconcile(settings, workflow);
-          await apply(current, { type: 'OBSERVATION', tabId, observation: report.observation, now: deps.now() }, settings);
+          await apply(current, { type: 'OBSERVATION', tabId, observation: report.observation, maxCycles: maxCyclesOf(settings), now: deps.now() }, settings);
         } catch (error) {
           log.error('Could not process page observation', error);
         }
@@ -336,5 +361,70 @@ export function createController(deps: ControllerDeps): Controller {
         }
       });
     },
+
+    handleAutoSendDue() {
+      return enqueue(async () => {
+        try {
+          await autoSend();
+        } catch (error) {
+          log.error('Automatic send failed', error);
+        }
+      });
+    },
   };
+
+  /**
+   * Sends the next prompt for auto-continue. The schedule is cleared before
+   * anything else, so a send is attempted at most once; every check that fails
+   * stops the session instead of retrying.
+   */
+  async function autoSend(): Promise<void> {
+    const { settings, workflow: loaded } = await load();
+    const workflow = await reconcile(settings, loaded);
+    const now = deps.now();
+    if (workflow.autoSendDueAt === null) return; // cancelled, already sent, or never scheduled
+    if (workflow.autoSendDueAt > now + 1000) {
+      // Woken early (for example by a stale alarm): wait for the real time.
+      await deps.alarm.schedule(workflow.autoSendDueAt);
+      return;
+    }
+    const begun = await apply(workflow, { type: 'AUTO_SEND_BEGIN', now }, settings);
+    if (begun.rejected) return;
+    let state = begun.state;
+
+    const fail = async (detail: string) => {
+      await apply(state, { type: 'STOP', reason: 'auto_send_failed', detail, now: deps.now() }, settings);
+    };
+
+    const project = activeProject(settings);
+    if (!project || !validateProject(project).valid || !project.autoContinue) return fail('the project settings changed or are invalid');
+    const prompt = renderPromptFor(project, state);
+    if (prompt.errors.length || !prompt.text) return fail('the prompt template cannot be rendered');
+
+    const tabId = state.trackedTabId;
+    if (tabId === null || (await tabs.findTargetTab(tabId)) !== tabId) return fail('the ChatGPT tab is no longer open');
+    const observation = await safeObservation(tabId);
+    if (!observation) return fail('the ChatGPT tab did not answer');
+    if (observation.status !== 'complete') return fail(`the page status is "${observation.status}" instead of a finished reply`);
+    if (observation.responseKey !== state.lastResponseKey) return fail('the conversation changed since the last reply');
+    if (observation.reportedStatus !== 'continue') return fail('the last reply no longer ends with AUTOPILOT STATUS: CONTINUE');
+
+    let result: SubmitResult;
+    try {
+      result = await tabs.submit(tabId, prompt.text);
+    } catch (error) {
+      log.warn('Submit message failed', error);
+      result = { ok: false, error: 'the ChatGPT tab did not respond' };
+    }
+    if (!result.ok) return fail(result.error);
+
+    state = (await apply(state, {
+      type: 'PROMPT_HANDED_OFF',
+      method: 'auto',
+      tabId,
+      currentResponseKey: observation.responseKey,
+      maxCycles: project.maxCyclesPerSession,
+      now: deps.now(),
+    }, settings)).state;
+  }
 }

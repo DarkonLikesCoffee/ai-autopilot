@@ -4,7 +4,7 @@ import type { ElementLike, QueryRoot } from '../../src/content/page.ts';
 import { DEFAULT_SELECTORS } from '../../src/content/selectors.ts';
 import { defaultProject } from '../../src/shared/settings.ts';
 import type { StorageAreaLike } from '../../src/shared/storage.ts';
-import type { PageObservation, PageSignals, ProjectSettings } from '../../src/shared/types.ts';
+import type { PageObservation, PageSignals, ProjectSettings, ReportedStatus } from '../../src/shared/types.ts';
 
 export interface FakeElementSpec {
   text?: string;
@@ -71,8 +71,8 @@ export function signals(overrides: Partial<PageSignals> = {}): PageSignals {
 
 export const CONVO = 'https://chatgpt.com/c/abc';
 
-export function obs(status: PageObservation['status'], key: string | null = null, url = CONVO): PageObservation {
-  return { status, responseKey: key, url, signals: signals() };
+export function obs(status: PageObservation['status'], key: string | null = null, url = CONVO, reportedStatus: ReportedStatus | null = null): PageObservation {
+  return { status, responseKey: key, url, reportedStatus, signals: signals() };
 }
 
 export function validProject(overrides: Partial<ProjectSettings> = {}): ProjectSettings {

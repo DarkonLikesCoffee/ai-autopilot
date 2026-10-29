@@ -1,11 +1,14 @@
 // Workflow state machine. Pure: (state, event) -> { state, effects }.
 // The background service worker is the only caller; it persists the state and
-// carries out the effects (notifications). Nothing here submits messages.
+// carries out the effects (notifications). Nothing here submits messages: with
+// auto-continue on, the state only records *when* the next send is due
+// (autoSendDueAt); the background performs the send after re-checking the page.
 
 import type {
   CyclePhase,
   MonitoringState,
   PageObservation,
+  ReportedStatus,
   ResponseStatus,
   ReviewOutcome,
   StopReason,
@@ -16,17 +19,20 @@ import type {
 export const MAX_NOTIFIED_KEYS = 50;
 export const MAX_LOG_ENTRIES = 30;
 
-export type HandoffMethod = 'copy' | 'insert';
+export type HandoffMethod = 'copy' | 'insert' | 'auto';
 
 export type WorkflowEvent =
-  | { type: 'START_SESSION'; projectId: string; now: number }
+  | { type: 'START_SESSION'; projectId: string; autoContinue: boolean; autoDelayMs: number; now: number }
   | { type: 'PROMPT_HANDED_OFF'; method: HandoffMethod; tabId: number | null; currentResponseKey: string | null; maxCycles: number; now: number }
-  | { type: 'OBSERVATION'; tabId: number; observation: PageObservation; now: number }
+  | { type: 'OBSERVATION'; tabId: number; observation: PageObservation; maxCycles: number; now: number }
   | { type: 'TAB_CLOSED'; tabId: number; now: number }
   | { type: 'MARK_REVIEWED'; outcome: ReviewOutcome; maxCycles: number; now: number }
   | { type: 'PAUSE'; now: number }
   | { type: 'RESUME'; now: number }
-  | { type: 'STOP'; reason: StopReason; now: number }
+  | { type: 'STOP'; reason: StopReason; detail?: string; now: number }
+  | { type: 'SET_AUTO_CONTINUE'; enabled: boolean; delayMs: number; now: number }
+  /** The background is about to send the scheduled prompt; clears the schedule so it can never fire twice. */
+  | { type: 'AUTO_SEND_BEGIN'; now: number }
   | { type: 'SELECT_PROJECT'; projectId: string | null; now: number }
   | { type: 'BROWSER_STARTUP'; now: number }
   | { type: 'RESET'; now: number };
@@ -75,6 +81,10 @@ export function initialWorkflowState(): WorkflowState {
     lastReviewOutcome: null,
     stopReason: null,
     recoveredFromCorruption: false,
+    autoContinue: false,
+    autoDelayMs: 60_000,
+    autoSendDueAt: null,
+    lastReportedStatus: null,
     log: [],
   };
 }
@@ -105,9 +115,20 @@ const reject = (state: WorkflowState, reason: string): TransitionResult => ({ st
 export const STOP_REASON_TEXT: Record<StopReason, string> = {
   user_stopped: 'Stopped by you',
   max_cycles_reached: 'Maximum continuation cycles reached',
-  milestone_reported: 'You recorded that ChatGPT reported the milestone as met',
-  blocker_reported: 'You recorded that ChatGPT reported a blocker needing your input',
+  milestone_reported: 'ChatGPT reported the milestone as met (not verified by the extension)',
+  blocker_reported: 'ChatGPT reported a blocker needing your input',
   project_changed: 'Active project changed',
+  usage_limit: 'ChatGPT showed a usage-limit message',
+  page_error: 'ChatGPT showed an error',
+  status_line_missing: 'The reply did not end with an AUTOPILOT STATUS line',
+  auto_send_failed: 'Auto-continue could not send the next prompt safely',
+};
+
+export const REPORTED_STATUS_TEXT: Record<ReportedStatus, string> = {
+  continue: 'CONTINUE',
+  milestone_complete: 'MILESTONE COMPLETE',
+  blocked: 'BLOCKED',
+  missing: 'No status line found',
 };
 
 export const STATUS_TEXT: Record<ResponseStatus, string> = {
@@ -119,13 +140,44 @@ export const STATUS_TEXT: Record<ResponseStatus, string> = {
   usage_limit: 'Usage limit message shown',
 };
 
-function stop(state: WorkflowState, reason: StopReason, now: number, source: WorkflowLogEntry['source']): WorkflowState {
+function stop(state: WorkflowState, reason: StopReason, now: number, source: WorkflowLogEntry['source'], detail?: string): WorkflowState {
   return withLog(
-    { ...state, monitoring: 'stopped', pauseReason: null, stopReason: reason, promptPrepared: false, lastEventAt: now },
+    { ...state, monitoring: 'stopped', pauseReason: null, stopReason: reason, promptPrepared: false, autoSendDueAt: null, lastEventAt: now },
     now,
     source,
-    `Session stopped: ${STOP_REASON_TEXT[reason]}.`,
+    `Session stopped: ${STOP_REASON_TEXT[reason]}${detail ? ` — ${detail}` : ''}.`,
   );
+}
+
+function sessionEndedNotice(reason: StopReason, now: number, detail?: string): NotifyEffect {
+  return {
+    type: 'notify',
+    kind: 'session_ended',
+    id: `session_ended:${reason}:${now}`,
+    title: 'Autopilot session stopped',
+    message: `${STOP_REASON_TEXT[reason]}${detail ? ` — ${detail}` : ''}. Nothing more will be sent.`,
+  };
+}
+
+/**
+ * Auto-continue decision for a completed reply. Anything other than an
+ * explicit CONTINUE status line ends the session; nothing is guessed.
+ */
+function autoContinueAfter(next: WorkflowState, state: WorkflowState, status: ReportedStatus, maxCycles: number, now: number): TransitionResult {
+  const end = (reason: StopReason, detail?: string): TransitionResult => ({
+    state: stop(next, reason, now, 'observed', detail),
+    effects: [sessionEndedNotice(reason, now, detail)],
+  });
+  if (status === 'milestone_complete') return end('milestone_reported');
+  if (status === 'blocked') return end('blocker_reported');
+  if (status !== 'continue') return end('status_line_missing', 'review the reply yourself');
+  if (state.cycle >= maxCycles) return end('max_cycles_reached', `${maxCycles} cycles`);
+  const due = now + state.autoDelayMs;
+  const ready: WorkflowState = { ...next, phase: 'ready', promptPrepared: true, latestReviewed: true, lastReviewOutcome: 'continue', autoSendDueAt: due };
+  return {
+    state: withLog(ready, now, 'system', `Cycle ${state.cycle}: ChatGPT reported CONTINUE. Prompt ${state.cycle + 1} will be sent automatically in ${Math.round(state.autoDelayMs / 1000)} s.`),
+    effects: [],
+  };
 }
 
 function sessionOpen(monitoring: MonitoringState): boolean {
@@ -194,7 +246,9 @@ function observe(state: WorkflowState, event: Extract<WorkflowEvent, { type: 'OB
       next.latestReviewed = false;
       next.promptPrepared = false;
       next.generationSeenSinceHandoff = false;
+      next.lastReportedStatus = observation.reportedStatus;
       if (key !== null) next.notifiedResponseKeys = [...state.notifiedResponseKeys, key].slice(-MAX_NOTIFIED_KEYS);
+      if (state.autoContinue) return autoContinueAfter(next, state, observation.reportedStatus ?? 'missing', event.maxCycles, now);
       next = withLog(next, now, 'observed', `Cycle ${state.cycle}: response appears complete. Waiting for your review.`);
       effects.push({
         type: 'notify',
@@ -206,6 +260,9 @@ function observe(state: WorkflowState, event: Extract<WorkflowEvent, { type: 'OB
       break;
     }
     case 'usage_limit':
+      if (state.autoContinue) {
+        return { state: stop(next, 'usage_limit', now, 'observed', 'nothing will be resent'), effects: [sessionEndedNotice('usage_limit', now)] };
+      }
       if (previous !== 'usage_limit') {
         next.monitoring = 'paused';
         next.pauseReason = 'usage_limit';
@@ -220,6 +277,9 @@ function observe(state: WorkflowState, event: Extract<WorkflowEvent, { type: 'OB
       }
       break;
     case 'error':
+      if (state.autoContinue) {
+        return { state: stop(next, 'page_error', now, 'observed', 'nothing will be retried'), effects: [sessionEndedNotice('page_error', now)] };
+      }
       if (previous !== 'error') {
         effects.push({
           type: 'notify',
@@ -252,10 +312,13 @@ export function transition(state: WorkflowState, event: WorkflowEvent): Transiti
         responseStatus: state.responseStatus,
         lastResponseKey: state.lastResponseKey,
         notifiedResponseKeys: state.notifiedResponseKeys,
+        autoContinue: event.autoContinue,
+        autoDelayMs: event.autoDelayMs,
         lastEventAt: now,
         log: state.log,
       };
-      return { state: withLog(next, now, 'user', 'Session started. Continuation prompt 1 is prepared.'), effects: [] };
+      const mode = event.autoContinue ? ' Auto-continue is on: later prompts are sent automatically.' : '';
+      return { state: withLog(next, now, 'user', `Session started. Continuation prompt 1 is prepared.${mode}`), effects: [] };
     }
 
     case 'PROMPT_HANDED_OFF': {
@@ -277,9 +340,13 @@ export function transition(state: WorkflowState, event: WorkflowEvent): Transiti
         responseKeyAtHandoff: event.currentResponseKey,
         generationSeenSinceHandoff: false,
         trackedTabId: event.tabId ?? state.trackedTabId,
+        autoSendDueAt: null,
         lastContinuationAt: now,
         lastEventAt: now,
       };
+      if (event.method === 'auto') {
+        return { state: withLog(next, now, 'system', `Cycle ${cycle}: prompt sent automatically (auto-continue).`), effects: [] };
+      }
       const how = event.method === 'insert' ? 'inserted into the ChatGPT composer' : 'copied';
       return { state: withLog(next, now, 'user', `Cycle ${cycle}: prompt ${how}. You submit it yourself.`), effects: [] };
     }
@@ -330,15 +397,40 @@ export function transition(state: WorkflowState, event: WorkflowEvent): Transiti
 
     case 'PAUSE':
       if (state.monitoring !== 'active') return reject(state, 'Only an active session can be paused.');
-      return { state: withLog({ ...state, monitoring: 'paused', pauseReason: 'user', lastEventAt: now }, now, 'user', 'Monitoring paused.'), effects: [] };
+      return {
+        state: withLog({ ...state, monitoring: 'paused', pauseReason: 'user', autoSendDueAt: null, lastEventAt: now }, now, 'user', state.autoSendDueAt !== null ? 'Monitoring paused; the scheduled automatic send was cancelled.' : 'Monitoring paused.'),
+        effects: [],
+      };
 
-    case 'RESUME':
+    case 'RESUME': {
       if (state.monitoring !== 'paused') return reject(state, 'Only a paused session can be resumed.');
-      return { state: withLog({ ...state, monitoring: 'active', pauseReason: null, lastEventAt: now }, now, 'user', 'Monitoring resumed.'), effects: [] };
+      // A send cancelled by the pause is rescheduled, and re-checked against the page when it fires.
+      const reschedule = state.autoContinue && state.phase === 'ready' && state.cycle > 0 && state.lastReportedStatus === 'continue';
+      const next: WorkflowState = { ...state, monitoring: 'active', pauseReason: null, autoSendDueAt: reschedule ? now + state.autoDelayMs : null, lastEventAt: now };
+      return { state: withLog(next, now, 'user', reschedule ? 'Monitoring resumed; the next automatic send is rescheduled.' : 'Monitoring resumed.'), effects: [] };
+    }
 
     case 'STOP':
       if (!sessionOpen(state.monitoring)) return reject(state, 'There is no running session to stop.');
-      return { state: stop(state, event.reason, now, event.reason === 'user_stopped' ? 'user' : 'system'), effects: [] };
+      return {
+        state: stop(state, event.reason, now, event.reason === 'user_stopped' ? 'user' : 'system', event.detail),
+        effects: event.reason === 'user_stopped' ? [] : [sessionEndedNotice(event.reason, now, event.detail)],
+      };
+
+    case 'SET_AUTO_CONTINUE': {
+      if (!sessionOpen(state.monitoring)) return { state, effects: [] };
+      if (state.autoContinue === event.enabled && state.autoDelayMs === event.delayMs) return { state, effects: [] };
+      // Turning it on takes effect from the next completed reply; it never sends right away.
+      const next: WorkflowState = { ...state, autoContinue: event.enabled, autoDelayMs: event.delayMs, autoSendDueAt: event.enabled ? state.autoSendDueAt : null };
+      const message = event.enabled ? 'Auto-continue turned on; it applies from the next completed reply.' : 'Auto-continue turned off; nothing will be sent automatically.';
+      return { state: withLog(next, now, 'user', message), effects: [] };
+    }
+
+    case 'AUTO_SEND_BEGIN':
+      if (state.monitoring !== 'active' || !state.autoContinue || state.phase !== 'ready' || state.autoSendDueAt === null) {
+        return reject(state, 'No automatic send is due.');
+      }
+      return { state: { ...state, autoSendDueAt: null, lastEventAt: now }, effects: [] };
 
     case 'SELECT_PROJECT': {
       if (state.projectId === event.projectId) return { state, effects: [] };
@@ -348,6 +440,11 @@ export function transition(state: WorkflowState, event: WorkflowEvent): Transiti
     }
 
     case 'BROWSER_STARTUP': {
+      // A send that was due across a browser restart is not attempted: the page must be re-checked by you.
+      if (sessionOpen(state.monitoring) && state.autoSendDueAt !== null) {
+        const detail = 'the browser restarted before the scheduled send';
+        return { state: stop({ ...state, trackedTabId: null, responseStatus: 'unknown' }, 'auto_send_failed', now, 'system', detail), effects: [sessionEndedNotice('auto_send_failed', now, detail)] };
+      }
       // Tab ids do not survive a browser restart; keep the conversation URL so the tab can be re-matched.
       const next = { ...state, trackedTabId: null, responseStatus: 'unknown' as const };
       return { state: withLog(next, now, 'system', 'Browser restarted. Waiting for the ChatGPT tab to report its status.'), effects: [] };
@@ -366,7 +463,11 @@ export function transition(state: WorkflowState, event: WorkflowEvent): Transiti
 const STATUSES: readonly ResponseStatus[] = ['unknown', 'idle', 'generating', 'complete', 'error', 'usage_limit'];
 const MONITORING: readonly MonitoringState[] = ['inactive', 'active', 'paused', 'stopped'];
 const PHASES: readonly CyclePhase[] = ['ready', 'awaiting_response', 'needs_review'];
-const STOP_REASONS: readonly StopReason[] = ['user_stopped', 'max_cycles_reached', 'milestone_reported', 'blocker_reported', 'project_changed'];
+const STOP_REASONS: readonly StopReason[] = [
+  'user_stopped', 'max_cycles_reached', 'milestone_reported', 'blocker_reported', 'project_changed',
+  'usage_limit', 'page_error', 'status_line_missing', 'auto_send_failed',
+];
+const REPORTED: readonly ReportedStatus[] = ['continue', 'milestone_complete', 'blocked', 'missing'];
 const OUTCOMES: readonly ReviewOutcome[] = ['continue', 'milestone_reported', 'blocker_reported'];
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
@@ -415,6 +516,11 @@ export function normalizeWorkflowState(raw: unknown): WorkflowState {
     lastReviewOutcome: oneOf(r.lastReviewOutcome, OUTCOMES) ? r.lastReviewOutcome : null,
     stopReason: oneOf(r.stopReason, STOP_REASONS) ? r.stopReason : null,
     recoveredFromCorruption: r.recoveredFromCorruption === true,
+    autoContinue: r.autoContinue === true,
+    autoDelayMs: typeof r.autoDelayMs === 'number' && Number.isFinite(r.autoDelayMs) && r.autoDelayMs >= 30_000 ? r.autoDelayMs : base.autoDelayMs,
+    // A pending send only survives if the session is still active and waiting for it.
+    autoSendDueAt: r.monitoring === 'active' && r.phase === 'ready' && r.autoContinue === true ? numOrNull(r.autoSendDueAt) : null,
+    lastReportedStatus: oneOf(r.lastReportedStatus, REPORTED) ? r.lastReportedStatus : null,
     log,
   };
 }
