@@ -38,6 +38,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'button[aria-label="Stop streaming"]',
     'button[aria-label="Stop generating"]',
     'button[aria-label="Stop answering"]',
+    'button[aria-label="Detener"]',
   ],
   sendControl: [
     'button[data-testid="send-button"]',
@@ -45,7 +46,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'button[aria-label="Send prompt"]',
     'button[aria-label="Send message"]',
   ],
-  streamingMarker: ['.result-streaming', '[data-testid="streaming-indicator"]'],
+  streamingMarker: ['[data-talvt-turn-state="in_progress"]', '.result-streaming', '[data-testid="streaming-indicator"]'],
   assistantMessage: ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
   userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],
   loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
