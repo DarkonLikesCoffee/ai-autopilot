@@ -47,7 +47,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
   ],
   streamingMarker: ['.result-streaming', '[data-testid="streaming-indicator"]'],
   assistantMessage: ['[data-message-author-role="assistant"]'],
-  userMessage: ['[data-message-author-role="user"]'],
+  userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],
   loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
   messageIdAttribute: 'data-message-id',
   noticeRegion: [
@@ -59,7 +59,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     '.text-token-text-error',
     '[class*="border-token-surface-error"]',
   ],
-  messageContainer: '[data-message-author-role]',
+  messageContainer: '[data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
 };
 
 // Patterns are matched against short notice texts only; the text is discarded right away.
