@@ -83,11 +83,15 @@ async function request(message: UiRequest): Promise<UiResponse> {
   }
 }
 
+let bannerTimer: ReturnType<typeof setTimeout> | null = null;
 function showBanner(text: string, tone: 'info' | 'danger'): void {
   const banner = $('banner');
   banner.textContent = text;
   banner.dataset.tone = tone;
   banner.hidden = !text;
+  if (bannerTimer !== null) clearTimeout(bannerTimer);
+  // Notes fade after a while; errors stay until the next action.
+  bannerTimer = tone === 'info' && text ? setTimeout(() => { banner.hidden = true; }, 8000) : null;
 }
 
 async function act(message: UiRequest, button?: HTMLButtonElement): Promise<UiResponse> {

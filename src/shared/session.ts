@@ -103,7 +103,7 @@ export function isSavedConversation(path: string | null): boolean {
 }
 
 export const REASON_TEXT: Record<HaltReason, string> = {
-  user: 'Stopped by you',
+  user: 'By you',
   max_cycles: 'Maximum number of continuations reached',
   usage_limit: 'ChatGPT shows a usage limit',
   auth_required: 'ChatGPT asks you to log in',
@@ -149,7 +149,8 @@ function halt(state: SessionState, run: Exclude<RunState, 'running'>, reason: Ha
       message: detail ? `${REASON_TEXT[reason]}: ${detail}` : `${REASON_TEXT[reason]}.`,
     });
   }
-  return { state: log(next, now, `${label}: ${REASON_TEXT[reason]}${detail ? ` (${detail})` : ''}.`), effects };
+  const message = reason === 'user' ? `${label} by you.` : `${label}: ${REASON_TEXT[reason]}${detail ? ` (${detail})` : ''}.`;
+  return { state: log(next, now, message), effects };
 }
 
 function limitReached(state: SessionState, settings: Timing): boolean {

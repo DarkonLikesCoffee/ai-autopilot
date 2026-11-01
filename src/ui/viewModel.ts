@@ -96,7 +96,7 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
       detail = session.reason && session.reason !== 'user' ? reasonDetail : 'Start Autopilot in the ChatGPT conversation you want to continue.';
       break;
     default:
-      detail = reasonDetail || (status === 'paused' ? 'Paused.' : 'Something needs your attention.');
+      detail = session.reason === 'user' ? 'Paused by you.' : reasonDetail || (status === 'paused' ? 'Paused.' : 'Something needs your attention.');
   }
 
   const limit = isUnlimited(settings) ? '∞' : String(settings.maxCycles);
