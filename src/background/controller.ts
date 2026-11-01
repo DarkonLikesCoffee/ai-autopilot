@@ -260,6 +260,16 @@ export function createController(deps: ControllerDeps): Controller {
 
   return {
     handleUi(request) {
+      // A snapshot only reads, so it does not wait behind a submission attempt in the queue.
+      if (request.type === 'GET_SNAPSHOT') {
+        return load().then(({ settings, session }) => snapshot(settings, session)).then(
+          (snap): UiResponse => ({ ok: true, snapshot: snap }),
+          (error: unknown): UiResponse => {
+            log.error('Snapshot failed', error);
+            return { ok: false, error: 'The extension could not read its state.' };
+          },
+        );
+      }
       return enqueue(async () => {
         try {
           return await handle(request);
