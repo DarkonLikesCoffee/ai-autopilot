@@ -41,8 +41,20 @@ function start(): void {
     });
   };
 
+  // Privacy-safe diagnostics: selector booleans/counts only, never message text.
+  let lastDiagnostic = '';
+  const readPage = () => {
+    const observation = observePage(document, location.href, DEFAULT_SELECTORS);
+    const diagnostic = JSON.stringify({ status: observation.status, ...observation.signals });
+    if (diagnostic !== lastDiagnostic) {
+      lastDiagnostic = diagnostic;
+      console.info('[ChatGPT Autopilot] Page detection', JSON.parse(diagnostic));
+    }
+    return observation;
+  };
+
   const detector = createDetector({
-    read: () => observePage(document, location.href, DEFAULT_SELECTORS),
+    read: readPage,
     emit: (observation) => send({ type: 'PAGE_OBSERVATION', observation }),
     timers: { setTimeout: (cb, ms) => window.setTimeout(cb, ms), clearTimeout: (h) => window.clearTimeout(h as number) },
   });
@@ -67,7 +79,7 @@ function start(): void {
     childList: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-testid', 'aria-label', 'aria-disabled', 'disabled', 'hidden', 'class', 'role'],
+    attributeFilter: ['data-testid', 'data-state', 'data-is-streaming', 'aria-label', 'aria-disabled', 'aria-busy', 'disabled', 'hidden', 'class', 'role'],
   });
 
   // ChatGPT is a single-page app: conversation switches do not reload the page.
