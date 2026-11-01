@@ -93,3 +93,28 @@ test('observations carry no message text', () => {
   assert.doesNotMatch(JSON.stringify(o), /SECRET/);
   assert.equal(readSignals(root, DEFAULT_SELECTORS).signals.assistantMessageCount, 1);
 });
+
+test('the composer is reported as holding text without exposing the text', () => {
+  const s = DEFAULT_SELECTORS;
+  const withText = observePage(fakeRoot({ [s.composer[0]!]: [{ text: 'my half-written message' }] }), 'https://chatgpt.com/c/a', s);
+  assert.equal(withText.signals.composerHasText, true);
+  assert.equal(JSON.stringify(withText).includes('half-written'), false);
+  const blank = observePage(fakeRoot({ [s.composer[0]!]: [{ text: '   ' }] }), 'https://chatgpt.com/c/a', s);
+  assert.equal(blank.signals.composerHasText, false);
+});
+
+test('user messages are counted (used to confirm that a continuation was sent)', () => {
+  const s = DEFAULT_SELECTORS;
+  const page = observePage(fakeRoot({ [s.composer[0]!]: [{}], [s.userMessage[0]!]: [{}, {}, {}] }), 'https://chatgpt.com/c/a', s);
+  assert.equal(page.signals.userMessageCount, 3);
+});
+
+test('a login screen or session-expired notice is an error, never a completion', () => {
+  const s = DEFAULT_SELECTORS;
+  const login = observePage(fakeRoot({ [s.loginControl[0]!]: [{}] }), 'https://chatgpt.com/', s);
+  assert.equal(login.signals.authRequired, true);
+  assert.equal(login.status, 'error');
+  const expired = observePage(fakeRoot({ [s.composer[0]!]: [{}], [s.assistantMessage[0]!]: [{}], [s.noticeRegion[0]!]: [{ text: 'Your session has expired. Please log in again.' }] }), 'https://chatgpt.com/c/a', s);
+  assert.equal(expired.signals.authRequired, true);
+  assert.equal(expired.status, 'error');
+});
