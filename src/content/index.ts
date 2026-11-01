@@ -79,7 +79,7 @@ function start(): void {
     childList: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-testid', 'data-state', 'data-is-streaming', 'aria-label', 'aria-disabled', 'aria-busy', 'disabled', 'hidden', 'class', 'role'],
+    attributeFilter: ['data-testid', 'data-test-id', 'data-state', 'data-is-streaming', 'data-talvt-turn-state', 'data-loading-indicator', 'data-d-stream-word', 'data-conversation-role', 'data-user-message-bubble', 'aria-label', 'aria-disabled', 'aria-busy', 'disabled', 'hidden', 'class', 'role'],
   });
 
   // ChatGPT is a single-page app: conversation switches do not reload the page.
