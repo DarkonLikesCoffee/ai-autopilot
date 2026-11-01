@@ -8,12 +8,16 @@ export interface SelectorConfig {
   composer: string[];
   /** The control that stops a response while it is generating. */
   stopControl: string[];
-  /** The send control (present when idle; never clicked by the extension). */
+  /** The send control. Clicked only to send the continuation, after its text was verified. */
   sendControl: string[];
   /** Markers that a response is still streaming. */
   streamingMarker: string[];
   /** Rendered assistant messages. Only their count and id attribute are read, never their text. */
   assistantMessage: string[];
+  /** Rendered user messages. Only counted, to confirm that a continuation was sent. */
+  userMessage: string[];
+  /** Controls shown when ChatGPT wants you to log in. */
+  loginControl: string[];
   /** Attribute holding a stable id on assistant messages. */
   messageIdAttribute: string;
   /** Regions where ChatGPT shows errors and limit notices. Text inside conversation messages is excluded. */
@@ -43,6 +47,8 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
   ],
   streamingMarker: ['.result-streaming', '[data-testid="streaming-indicator"]'],
   assistantMessage: ['[data-message-author-role="assistant"]'],
+  userMessage: ['[data-message-author-role="user"]'],
+  loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
   messageIdAttribute: 'data-message-id',
   noticeRegion: [
     '[role="alert"]',
@@ -64,6 +70,12 @@ export const USAGE_LIMIT_PATTERNS: RegExp[] = [
   /\btoo many requests\b/i,
   /\brate limit/i,
   /\bmessage cap\b/i,
+];
+
+export const AUTH_PATTERNS: RegExp[] = [
+  /\byour session has expired\b/i,
+  /\bplease log ?in again\b/i,
+  /\blog ?in to continue\b/i,
 ];
 
 export const ERROR_PATTERNS: RegExp[] = [
