@@ -46,7 +46,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'button[aria-label="Send message"]',
   ],
   streamingMarker: ['.result-streaming', '[data-testid="streaming-indicator"]'],
-  assistantMessage: ['[data-message-author-role="assistant"]'],
+  assistantMessage: ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
   userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],
   loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
   messageIdAttribute: 'data-message-id',
