@@ -23,6 +23,39 @@ RULES FOR WHOEVER EDITS THIS FILE (ChatGPT or a human):
 7. End every session by filling in "Exact next recommended action".
 -->
 
+## 0. Continuation protocol (read first, every time)
+
+Development runs in repeated continuations. After each of your replies, the
+ChatGPT Autopilot extension sends the same short, generic prompt telling you to
+continue from this file. The prompt never says what to do next: **this file is
+the only source of truth for objectives, rules, priorities and progress.** The
+extension does not read or edit this file and does not check your work.
+
+**At the start of every continuation:**
+1. Read this whole file.
+2. Verify the repository state before changing anything: current branch, latest
+   commits, uncommitted changes, open pull requests and CI status. If what you
+   find disagrees with this file, trust the repository, record the discrepancy
+   in section 12 and correct this file first.
+3. Choose the next task from section 16 (or, if it is done, the highest-priority
+   open task in section 9).
+
+**During the continuation:** implement, run the checks in section 10, and fix
+what you break. Do one meaningful unit of work, not a plan.
+
+**After meaningful progress (and at the end of every continuation):** update
+this file in the same commit when possible: completed tasks with evidence
+(section 11), new bugs (12), decisions (13), blockers (14), the session row (15)
+and the next action (16). Label every claim `[VERIFIED]` (with evidence) or
+`[ASSUMPTION]`.
+
+**When to stop:** if the milestone's definition of done is met and verified, or
+you are genuinely blocked, or a decision needs the owner, say so plainly and end
+with the matching status line. Because the extension keeps sending the
+continuation prompt until the owner stops it, **on later continuations do not
+invent work:** re-check the repository, and if nothing changed, reply briefly
+with the same status line.
+
 ## 1. Project overview and objectives
 
 - **Project:** <name>
@@ -144,3 +177,7 @@ Older sessions: <one-line summary, or "none">.
 - **Why this one:** <priority / dependency reasoning>
 - **First step:** <the first concrete action>
 - **Status line for the reply:** `AUTOPILOT STATUS: CONTINUE`
+
+<!-- Status lines are for the owner reading the conversation; the extension does
+not parse them. Use CONTINUE, MILESTONE COMPLETE or BLOCKED. -->
+

@@ -1,212 +1,179 @@
-# ChatGPT Project Autopilot (Chrome extension)
+# ChatGPT Autopilot (Chrome extension)
 
-A Manifest V3 extension that runs a **prompt-and-review loop** around your normal ChatGPT website workflow. Your project's state lives in `AUTOPILOT.md` in your GitHub repository, and ChatGPT reads and updates that file through its GitHub integration. The extension:
+A lightweight Chrome extension (Manifest V3) that keeps ChatGPT working on a
+project: **each time ChatGPT finishes a response, it waits a moment and then
+sends the same continuation prompt**, until you pause or stop it.
 
-- keeps a reusable, editable **continuation prompt** for each project,
-- **copies** it, or **inserts** it into the ChatGPT message box (it never sends),
-- **notices when ChatGPT's response appears complete** and notifies you,
-- tracks **cycles** (prompt → response → your review) up to a per-session limit,
-- **pauses** when ChatGPT shows a usage-limit message, and never retries or resends.
+It is a continuation trigger, not an agent. It does not decide what to work on,
+does not read your repository, and does not judge ChatGPT's work. The
+repository's `AUTOPILOT.md` (read and updated by ChatGPT through its connected
+GitHub tools) is the source of truth for what happens next.
 
-It is an assistant, not an autonomous agent. **You press Send for every message.** It uses no OpenAI API, no other AI provider, no backend and no paid service.
+## How it works
+
+1. Open a ChatGPT conversation that is connected to your GitHub repository.
+2. Click **Start Autopilot** in the extension's popup or side panel.
+3. Send your first project prompt yourself (or start while ChatGPT is already
+   answering).
+4. When ChatGPT finishes, Autopilot confirms the response is really complete,
+   waits the configured delay, then types the continuation prompt into the
+   message box, checks the text, clicks **Send**, and confirms on the page that
+   the message was sent.
+5. ChatGPT continues working; Autopilot waits for the next response to finish
+   and repeats, with no action from you, until you **Pause** or **Stop**, the
+   maximum number of cycles is reached, or a safeguard stops it.
+
+The default continuation prompt (editable in Settings):
+
+> Continue working on the project.
+>
+> Read the repository's AUTOPILOT.md to understand the project's objectives,
+> current state, instructions, rules, priorities, and remaining tasks.
+>
+> Review the current implementation and repository state. Determine the most
+> appropriate next action and execute it.
+>
+> Work autonomously. Don't just analyze, suggest changes, or provide a plan:
+> actually implement the necessary changes, run relevant tests and checks, fix
+> any issues you discover, and commit your work when appropriate.
+>
+> Update AUTOPILOT.md to accurately reflect progress, completed tasks,
+> discovered issues, decisions, and the next recommended action.
+>
+> Continue making meaningful progress. Only stop if the project milestone is
+> complete, you're genuinely blocked, or human input is necessary.
+
+The same prompt is sent every time; nothing is generated dynamically.
 
 ## Installation
-
-Requirements: Chrome 116 or newer (or another Chromium browser with Manifest V3 and side panel support). You need Node.js 22.18 or newer only if you build from source.
 
 ```bash
 npm ci
 npm run build
 ```
 
-1. Open `chrome://extensions` and turn on **Developer mode**.
-2. Click **Load unpacked** and choose the `dist` folder of this repository.
-3. Pin the extension. Click its icon for the popup, then **Open side panel** for the full interface.
+1. Open `chrome://extensions`, turn on **Developer mode**.
+2. Click **Load unpacked** and choose the `dist/` folder.
+3. Reload any ChatGPT tabs that were already open, so the extension can attach.
+4. Pin the extension. Use the popup, or open the side panel (right-click the
+   icon → *Open side panel*) to watch the countdown while you work.
 
-If a ChatGPT tab was already open before you installed or reloaded the extension, reload that tab once yourself so the content script attaches.
+Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
 
-## Permissions and why they are needed
+## The control panel
+
+- **Status:** Running, Waiting for ChatGPT, Waiting before continuation, Paused,
+  Stopped or Error, with the reason when it is not running.
+- **Controls:** Start Autopilot, Pause / Resume, Stop.
+- **Session:** current conversation, continuations sent (of the maximum, or ∞),
+  ChatGPT's current state, time until the next continuation, the last
+  continuation's time and the last error.
+- **Settings:** continuation prompt, delay before sending, completion
+  confirmation delay, maximum cycles (or **Unlimited**) and notifications.
+- **Activity:** a short log of what Autopilot did and why.
+
+**Unlimited** means no limit set by the extension. ChatGPT's own usage limits
+always apply: when ChatGPT shows a usage-limit notice, Autopilot stops and
+never retries on its own.
+
+## Safeguards
+
+Autopilot sends at most one continuation per finished response and prefers to
+stop over guessing:
+
+| Situation | What happens |
+|---|---|
+| A response is still streaming, or streaming pauses briefly between chunks | Nothing; a response only counts as finished after the page stays finished for the completion confirmation delay |
+| The same response is reported again (re-renders, navigation back, an already-finished page) | Nothing; a completion only counts after a new generation was seen, and each response is answered at most once |
+| ChatGPT starts generating during the delay (for example you sent something) | The pending continuation is cancelled |
+| The message box contains text (you are typing) | Paused; your text is never touched |
+| The tab switches to another conversation | Paused; nothing is sent anywhere else |
+| Usage limit, login prompt or an error notice | Stopped with an error; never retried automatically |
+| The prompt cannot be typed, Send never becomes available, or the click does not send | Error; the prompt is removed from the box again; not retried |
+| It cannot be confirmed whether the prompt was sent | Paused; that response is never answered again |
+| The tab is closed, or the browser/extension restarts | Paused; resume when the conversation is open again |
+| Chrome stops the background worker during the delay | The delay is picked up again (alarm + page timer); no duplicate |
+| Maximum cycles reached | Stopped |
+| Pause or Stop | Nothing more is sent |
+
+Before every send, the background and then the page itself re-check, on the
+live page: same conversation, the same latest response, finished, not
+generating, empty message box, no usage limit. The response is recorded as
+answered *before* the send is attempted, so a crash or restart can never send it
+twice. It only uses the normal ChatGPT interface (typing and the Send button): no
+undocumented APIs, no session tokens, no rate-limit workarounds.
+
+## Permissions and privacy
 
 | Permission | Why |
 |---|---|
-| `storage` | Saves your project settings and the workflow state in `chrome.storage.local` (stays on this device). |
-| `notifications` | Shows "response appears complete", usage-limit and error notifications. You can turn these off per project. |
-| `sidePanel` | Provides the side panel interface. |
-| Host access to `chatgpt.com` and `chat.openai.com` | Runs the content script that watches the page state and inserts prompts, and lets the extension find the ChatGPT tab. |
+| `https://chatgpt.com/*`, `https://chat.openai.com/*` | Observe the page state and send the continuation in your ChatGPT tab |
+| `storage` | Settings and session state, on this computer only |
+| `alarms` | Wake up when the delay ends, even if Chrome paused the background worker |
+| `notifications` | Tell you when Autopilot pauses or stops (optional) |
+| `sidePanel` | The side panel view |
 
-The extension does **not** request access to GitHub, cookies, browsing history or any other site. It stores **no credentials**: no GitHub tokens, no ChatGPT cookies or session tokens. Settings that look like an access token (for example `ghp_…`, `github_pat_…`, `sk-…`, `Bearer …`) are rejected.
+The extension does not access GitHub, cookies or any other site, has no backend
+and no external AI service, and stores no credentials. It never reads, stores or
+sends the text of your conversation: it reads page structure (buttons, message
+counts and ids, notices) and whether the message box is empty.
 
-## Setting up a project
+## AUTOPILOT.md
 
-1. In the side panel, click **New** and fill in the **Project** tab:
-   - **Project name**
-   - **GitHub repository URL**, for example `https://github.com/owner/repo`
-   - **Default branch**
-   - **Path to AUTOPILOT.md**, relative to the repository root, for example `AUTOPILOT.md` or `docs/AUTOPILOT.md`
-   - **Milestone description**: what "done" means for this round of work
-   - **Maximum continuation cycles per session** (1–100)
-   - **Show desktop notifications**
-   - **Ask me to confirm before each prompt hand-off**. Submission is always manual; this option adds a confirmation step before a prompt is copied or inserted as a new cycle.
-2. In **Prompt & rules**, edit the continuation template and add any standing rules. Then **Save**.
-3. Put `AUTOPILOT.md` in the repository. In **Help**, use **Copy AUTOPILOT.md template**, then either commit it yourself or paste it into ChatGPT and ask it to fill the template in for your project and commit it. The same template is in [`templates/AUTOPILOT.md`](templates/AUTOPILOT.md).
-
-### The AUTOPILOT.md template
-
-The template has these sections:
-
-1. Project overview and objectives
-2. Current milestone
-3. Definition of done
-4. Mandatory project rules
-5. Architecture and design constraints
-6. Coding conventions
-7. Functional requirements
-8. Prioritized roadmap
-9. Actionable task checklist
-10. Build, test, lint and verification commands
-11. Completed tasks and evidence
-12. Known bugs, technical debt and regressions
-13. Decisions and their rationale
-14. Blockers and unresolved questions
-15. Session history (bounded to the last 10 sessions)
-16. Exact next recommended action
-
-Every statement is labelled `[VERIFIED]`, `[ASSUMPTION]`, `[PROPOSAL]` or `[UNRESOLVED]`. A task may be checked off only with evidence: a command and its result, a commit, or a file reference. Decisions are superseded rather than deleted. The file asks ChatGPT to end each reply with `AUTOPILOT STATUS: CONTINUE | MILESTONE COMPLETE | BLOCKED`, so your review takes one glance.
-
-### Prompt template variables
-
-| Variable | Value |
-|---|---|
-| `{{projectName}}` | Project name |
-| `{{repositoryUrl}}` | Repository URL |
-| `{{repositoryName}}` | `owner/repo` parsed from the URL |
-| `{{branch}}` | Default branch |
-| `{{milestone}}` | Milestone description |
-| `{{autopilotPath}}` | Path to AUTOPILOT.md |
-| `{{projectRules}}` | Standing rules from the Prompt & rules tab |
-| `{{cycle}}` | Number of the continuation being prepared |
-| `{{maxCycles}}` | Maximum cycles per session |
-
-`{{#name}} … {{/name}}` keeps the enclosed text only when the variable is non-empty. The default template uses this for the rules block. Unknown variables are reported as errors; they are never silently dropped.
-
-## The workflow
-
-1. Open the ChatGPT conversation that has your repository connected.
-2. Click **Start session**. Continuation prompt 1 is prepared.
-3. Click **Copy prompt** and paste it, or click **Insert into ChatGPT**. Read the prompt, then **press Send yourself**.
-4. The extension watches the page. When the response appears complete, you get a notification and the badge shows **DONE**.
-5. Read the reply, then click **Mark cycle reviewed…** and record what ChatGPT reported:
-   - **Continue**: the next prompt is prepared.
-   - **Milestone met** or **Blocked**: the session stops.
-6. Repeat. The session also stops at the cycle limit or when you click **Stop**.
-
-**Pause monitoring** keeps the session but stops notifications and cycle changes. On **Resume**, the extension checks the page again, so a response that finished while monitoring was paused is still recognized.
-
-## What the extension really knows
-
-The panel keeps these apart:
-
-- **Observed by the extension.** What the ChatGPT page shows right now:
-  - a stop-generation control or a streaming marker (generating),
-  - a new assistant message with no generation signals (response appears complete),
-  - visible error or usage-limit notices.
-
-  If the page does not expose enough to decide, the status is **Unknown**, never a guess.
-- **Recorded by the extension.** Cycles, hand-offs, timestamps, pause and stop.
-- **Reported by ChatGPT, as you recorded it.** The outcome you choose when reviewing. The extension cannot verify it.
-
-The extension **cannot** see GitHub and **does not read ChatGPT's replies**. It never claims that ChatGPT read or updated `AUTOPILOT.md`, or that the milestone is met. A finished, or stopped, response only means "time to review".
-
-## How completion detection works
-
-`src/content/` holds the content script:
-
-- `selectors.ts` lists every assumption about ChatGPT's page in one place: the composer, the stop and send controls, streaming markers, assistant messages and notice regions.
-- `page.ts` turns the page into a small **text-free observation**: which controls are visible, the number of assistant messages and the id attribute of the last one. It then classifies that observation. Without a recognizable composer, the status is `unknown`.
-- `detector.ts` reacts to a `MutationObserver`, SPA navigation and visibility changes, and coalesces bursts of mutations.
-  - **Generating** is reported immediately.
-  - **The end of generation** is reported only after the page has stayed out of the generating state for a short confirmation window, and only after a fresh read agrees. This filters flicker between streamed chunks. It does not assume how long a response takes.
-- The background worker accepts a completion only for the conversation it tracks, and only if generation was seen after your hand-off or the latest response changed since then. Each response key is notified at most once, so re-renders and repeated observations never produce duplicate notifications.
-
-**Usage-limit and error notices** are matched in alert, status and error regions only. Text inside conversation messages is excluded, so a reply that mentions "rate limit" does not trigger anything. Notice text is matched and discarded immediately; it is never stored.
-
-**Insertion** puts the prompt into the message box through the editor's normal input path. It then reads the box back to verify the text. It never presses Enter and never clicks Send. If the box already contains text, it asks before replacing it. If the box cannot be found, or the text cannot be verified, it tells you to use **Copy prompt**.
-
-## Safety constraints
-
-- Never submits messages, never presses Enter and never clicks Send.
-- Never reloads a page, retries or resends, including after usage-limit or error messages. On a usage limit, monitoring pauses until you resume.
-- Uses no ChatGPT internal APIs or endpoints. It only observes the rendered page.
-- Does not bypass authentication, CAPTCHAs, limits or other protections.
-- Does not scrape, persist or transmit conversation text. The event log contains only extension events.
-- Never touches GitHub.
-- Has no external backend and no network requests of its own.
-- Pause and Stop are always visible. Consequential actions ask for confirmation: replacing composer text, stopping, deleting a project, switching projects mid-session, and each hand-off when the option is on.
-
-## State and persistence
-
-Settings and workflow state are stored in `chrome.storage.local` and survive browser restarts.
-
-- **Workflow state:** active project, cycle, phase, observed status, reviewed flag, prepared-prompt flag, pause and stop state with reasons, tracked tab and conversation URL, timestamps, and a bounded event log.
-- **Background worker:** loads state from storage for every event, because Chrome may stop the worker at any time. It applies changes one at a time through an explicit state machine (`src/shared/workflow.ts`).
-- **After a browser restart:** tab ids change. The extension keeps the conversation URL and re-attaches when that conversation reports in again.
-- **Unreadable stored data:** replaced with safe defaults (an inactive session), and the panel says so.
+`templates/AUTOPILOT.md` is a starting point for the file in your repository. It
+defines the objectives, current milestone, definition of done, rules,
+architecture constraints, prioritized tasks, known bugs, verification commands,
+completed work with evidence, decisions, blockers and the next recommended
+action, and labels claims as verified or assumed. Its *Continuation protocol*
+tells ChatGPT to verify the repository state at the start of each continuation,
+update the file after meaningful progress, and, once the milestone is done or it
+is blocked, say so plainly instead of inventing work while Autopilot keeps
+prompting. The extension never reads or edits this file.
 
 ## Development
 
 ```bash
 npm run typecheck   # strict TypeScript
-npm test            # unit tests (node:test, Node's built-in TypeScript support)
+npm test            # unit tests (node --test)
 npm run build       # bundles into dist/
 npm run check       # all three
-npm run e2e         # real Chromium end-to-end run against a fake ChatGPT page (needs Playwright)
+npm run e2e         # real-browser test (needs Playwright with Chromium)
 ```
 
-| Path | Responsibility |
-|---|---|
-| `src/shared/` | Types, settings validation, template rendering, workflow state machine, storage, message contracts |
-| `src/content/` | Page observation, completion detection and composer insertion on ChatGPT |
-| `src/background/` | `controller.ts` holds the logic (testable with injected dependencies); `index.ts` wires up the `chrome.*` APIs, notifications and badge |
-| `src/ui/` | Side panel and popup (`app.ts`), plus a pure view model (`viewModel.ts`) |
-| `static/` | Manifest, HTML, CSS, icons |
-| `templates/AUTOPILOT.md` | The project-state template |
-| `test/` | Unit tests with mocked storage, tabs, timers and DOM |
-| `e2e/` | Real-browser test |
+Architecture (`src/`):
 
-Dev dependencies are `typescript`, `esbuild`, `@types/chrome` and `@types/node`. There are no runtime dependencies.
+- `content/` — runs on ChatGPT. `selectors.ts` holds every assumption about
+  ChatGPT's page; `page.ts` turns the page into a text-free observation;
+  `detector.ts` coalesces DOM changes and applies the completion confirmation
+  delay; `composer.ts` types, verifies, sends and confirms the continuation;
+  `index.ts` wires it to the extension.
+- `shared/session.ts` — the continuation state machine (pure functions): phases
+  *watching → delay → submitting* inside *running / paused / error / stopped*.
+- `background/controller.ts` — applies events one at a time from persisted state,
+  saves state before acting, checks the live page, and asks the tab to send;
+  `background/index.ts` wires Chrome APIs (messages, alarms, notifications,
+  badge, browser-restart detection).
+- `ui/` — the control panel (`viewModel.ts` is pure and tested).
 
-### Tests
-
-The unit tests cover:
-
-- template rendering
-- settings validation, including credential rejection
-- every workflow transition
-- duplicate-notification prevention
-- pause and resume
-- unknown status
-- usage-limit and error detection, including text inside messages
-- persistence, restart and corruption recovery
-- invalid or missing configuration
-- serialized concurrent events
-
-The e2e script loads `dist/` into Chromium. It replaces `chatgpt.com` with a local page that mimics the composer, send and stop controls, streaming assistant messages and notices. It then drives the side panel through:
-
-- configuration and a credential rejection
-- insertion, with a check that nothing was submitted
-- detecting generation and completion
-- a single notification, with no duplicates after a re-render
-- review, then a browser restart
-- a copy hand-off
-- a usage-limit pause
-- stop
+Tests: `test/controller.test.ts` runs the whole workflow (the real state machine,
+controller and storage with a fake tab and clock), including all safeguards
+above. `e2e/extension.e2e.mjs` loads the built extension in Chromium against a
+local fake ChatGPT page and drives the real panel.
 
 ## Known limitations
 
-- **ChatGPT's interface changes.** Detection relies on the selectors in `src/content/selectors.ts`. When ChatGPT changes its markup, the status shows **Unknown**, or insertion reports that it cannot find the message box, until the selectors are updated. Nothing breaks unsafely, but detection quality depends on these selectors. The e2e test uses a fake page, so it does not prove compatibility with today's live site.
-- **"Complete" is a page-state heuristic.** A response you stopped manually also looks complete. In either case it means "review it", not "it worked".
-- **Usage-limit and error wording varies.** Unrecognized wording produces no notice. Notices outside the configured regions are not seen.
-- **Inserting into the composer uses the browser's editing commands, with a paste fallback.** If ChatGPT's editor ignores both, insertion reports a failure and you use Copy.
-- **Background tabs.** Chrome may throttle timers in background tabs, which can delay the completion notice by a few seconds.
-- **Several ChatGPT tabs.** When more than one is open and none is clearly the target, the extension asks you to make the right one active instead of guessing.
-- **The extension cannot verify repository changes.** It has no GitHub access, by design. `AUTOPILOT.md` stays the record that ChatGPT maintains.
+- **Not verified against the live ChatGPT site** in this repository's automated
+  tests: those use a fake page that mimics ChatGPT's structure. ChatGPT's page
+  changes over time; if detection or sending stops working, update
+  `src/content/selectors.ts`. Autopilot stops with an error rather than
+  pretending to succeed.
+- The tab must stay open. It may be behind other tabs: Autopilot sends into the
+  session's tab, never the active one (tested). Whether typing and sending behave
+  the same in a truly hidden tab, where Chrome throttles timers, was not
+  verified (headless test browsers report every tab as visible). If sending
+  fails there, Autopilot reports an error instead of guessing. If Chrome
+  discards the tab, it cannot answer, so the next send is refused and Autopilot
+  stops with an error.
+- Starting requires the conversation to be the active tab in the focused window.
+- Automating the ChatGPT web interface may be subject to OpenAI's terms of use.
+  You are responsible for how you use it; keep delays and cycle limits sensible.

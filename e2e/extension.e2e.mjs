@@ -213,6 +213,21 @@ try {
 
   await saveSettings(() => panel.fill('#s-delay', '1'));
 
+  // ---- Tab switching: the conversation keeps going in a background tab ----
+  const bgChat = await openConversation('/c/e2e-background');
+  await start(bgChat);
+  await userSends(bgChat, 'Background tab test');
+  const other = await context.newPage();
+  await other.goto('about:blank');
+  await other.bringToFront();
+  const bgVisibility = await bgChat.evaluate(() => document.visibilityState);
+  await waitFor('continuation in a background tab', async () => (await messages(bgChat)).length >= 2, 30000);
+  // Headless Chromium reports every tab as visible, so this proves routing, not hidden-tab throttling.
+  check('tab switching: the continuation goes to the session\'s tab, not to the tab in front',
+    (await messages(bgChat))[1] === PROMPT && (await messages(other).catch(() => null)) === null, `visibility=${bgVisibility}`);
+  await other.close();
+  await stop();
+
   // ---- 13: existing composer text is preserved ----
   const draftChat = await openConversation('/c/e2e-draft');
   await start(draftChat);

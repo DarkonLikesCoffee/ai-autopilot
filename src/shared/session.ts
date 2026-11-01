@@ -117,8 +117,6 @@ export const REASON_TEXT: Record<HaltReason, string> = {
   tab_unreachable: 'The ChatGPT tab did not respond',
 };
 
-const PAUSE_REASONS = new Set<HaltReason>(['user', 'conversation_changed', 'tab_closed', 'browser_restarted', 'composer_has_text', 'submission_uncertain']);
-
 function log(state: SessionState, now: number, message: string): SessionState {
   const entry: LogEntry = { at: now, message };
   return { ...state, log: [...state.log, entry].slice(-MAX_LOG_ENTRIES), updatedAt: now };
@@ -398,8 +396,6 @@ export function transition(state: SessionState, event: SessionEvent): Transition
     }
   }
 }
-
-export const isPauseReason = (reason: HaltReason): boolean => PAUSE_REASONS.has(reason);
 
 // ---- Persistence recovery -------------------------------------------------
 
