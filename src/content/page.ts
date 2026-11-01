@@ -1,11 +1,13 @@
 // Reads observable page state into a small, text-free observation.
 // Written against minimal interfaces so tests can supply a fake document.
 
-import { ERROR_PATTERNS, USAGE_LIMIT_PATTERNS, type SelectorConfig } from './selectors.ts';
+import { AUTH_PATTERNS, ERROR_PATTERNS, USAGE_LIMIT_PATTERNS, type SelectorConfig } from './selectors.ts';
 import type { PageObservation, PageSignals, ResponseStatus } from '../shared/types.ts';
 
 export interface ElementLike {
   textContent: string | null;
+  /** Present on textareas; contenteditable composers use textContent. */
+  value?: string;
   getAttribute(name: string): string | null;
   closest(selector: string): unknown;
   checkVisibility?: () => boolean;
@@ -58,18 +60,29 @@ function noticeMatches(root: QueryRoot, selectors: SelectorConfig, patterns: Reg
   return false;
 }
 
+/** Whether an element has text, without keeping the text. */
+export function hasText(element: ElementLike | undefined): boolean {
+  if (!element) return false;
+  const text = typeof element.value === 'string' ? element.value : element.textContent ?? '';
+  return text.replace(/\u00a0/g, ' ').trim().length > 0;
+}
+
 export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null } {
   const assistants = findVisible(root, selectors.assistantMessage);
   const last = assistants[assistants.length - 1];
+  const composers = findVisible(root, selectors.composer);
   return {
     signals: {
-      composerFound: findVisible(root, selectors.composer).length > 0,
+      composerFound: composers.length > 0,
+      composerHasText: hasText(composers[0]),
       stopControlFound: findVisible(root, selectors.stopControl).length > 0,
       sendControlFound: findVisible(root, selectors.sendControl).length > 0,
       streamingMarkerFound: findVisible(root, selectors.streamingMarker).length > 0,
       assistantMessageCount: assistants.length,
+      userMessageCount: findVisible(root, selectors.userMessage).length,
       errorNoticeFound: noticeMatches(root, selectors, ERROR_PATTERNS),
       usageLimitNoticeFound: noticeMatches(root, selectors, USAGE_LIMIT_PATTERNS),
+      authRequired: noticeMatches(root, selectors, AUTH_PATTERNS) || (composers.length === 0 && findVisible(root, selectors.loginControl).length > 0),
     },
     lastMessageId: last?.getAttribute(selectors.messageIdAttribute) ?? null,
   };
@@ -77,13 +90,13 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
 
 /**
  * Maps signals to a status. Order matters: a usage-limit notice wins, then any
- * sign of generation, then errors. Without a composer the page is not in a
- * recognizable state, so the answer is "unknown".
+ * sign of generation, then errors (including a login prompt). Without a
+ * composer the page is not in a recognizable state, so the answer is "unknown".
  */
 export function classify(signals: PageSignals): ResponseStatus {
   if (signals.usageLimitNoticeFound) return 'usage_limit';
   if (signals.stopControlFound || signals.streamingMarkerFound) return 'generating';
-  if (signals.errorNoticeFound) return 'error';
+  if (signals.errorNoticeFound || signals.authRequired) return 'error';
   if (!signals.composerFound) return 'unknown';
   return signals.assistantMessageCount > 0 ? 'complete' : 'idle';
 }

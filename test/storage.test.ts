@@ -1,25 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSerialQueue, loadSettings, loadWorkflow, saveSettings, saveWorkflow } from '../src/shared/storage.ts';
-import { defaultSettingsStore } from '../src/shared/settings.ts';
-import { initialWorkflowState } from '../src/shared/workflow.ts';
-import { MemoryStorage, validProject } from './helpers/fixtures.ts';
+import { createSerialQueue, loadSession, loadSettings, saveSession, saveSettings, SESSION_KEY, SETTINGS_KEY } from '../src/shared/storage.ts';
+import { defaultSettings } from '../src/shared/settings.ts';
+import { initialSession } from '../src/shared/session.ts';
+import { MemoryStorage, testSettings } from './helpers/fixtures.ts';
 
-test('settings and workflow round-trip through storage', async () => {
+test('settings and session round-trip through storage (they persist across restarts)', async () => {
   const storage = new MemoryStorage();
-  const store = { ...defaultSettingsStore(), projects: [validProject()], activeProjectId: 'p1' };
-  await saveSettings(storage, store);
-  const workflow = { ...initialWorkflowState(), monitoring: 'paused' as const, pauseReason: 'user' as const, phase: 'awaiting_response' as const, cycle: 2 };
-  await saveWorkflow(storage, workflow);
-  assert.deepEqual((await loadSettings(storage)).store, store);
-  assert.deepEqual(await loadWorkflow(storage), workflow);
+  const settings = testSettings({ prompt: 'Keep going.', delaySeconds: 42, maxCycles: 7, notifications: false });
+  await saveSettings(storage, settings);
+  const session = { ...initialSession(), run: 'paused' as const, reason: 'user' as const, tabId: 3, conversation: '/c/x', cycles: 2 };
+  await saveSession(storage, session);
+  // A fresh load, as after a browser or service-worker restart.
+  assert.deepEqual(await loadSettings(storage), settings);
+  assert.deepEqual(await loadSession(storage), session);
 });
 
-test('empty storage loads defaults without a recovery flag', async () => {
+test('empty or corrupt storage loads safe defaults', async () => {
   const storage = new MemoryStorage();
-  const settings = await loadSettings(storage);
-  assert.equal(settings.recovered, false);
-  assert.deepEqual(await loadWorkflow(storage), initialWorkflowState());
+  assert.deepEqual(await loadSettings(storage), defaultSettings());
+  assert.deepEqual(await loadSession(storage), initialSession());
+  storage.data[SETTINGS_KEY] = 'garbage';
+  storage.data[SESSION_KEY] = { schemaVersion: 2, run: 'running', phase: 'nonsense', answeredKeys: ['/c/x|id:1'] };
+  assert.deepEqual(await loadSettings(storage), defaultSettings());
+  const session = await loadSession(storage);
+  assert.equal(session.run, 'stopped', 'unreadable state never resumes sending');
+  assert.deepEqual(session.answeredKeys, ['/c/x|id:1'], 'answered responses are remembered even then');
 });
 
 test('the serial queue runs tasks in order and survives failures', async () => {

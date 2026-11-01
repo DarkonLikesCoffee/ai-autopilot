@@ -1,83 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { UiSnapshot } from '../src/shared/messages.ts';
-import { validateProject } from '../src/shared/settings.ts';
-import { initialWorkflowState } from '../src/shared/workflow.ts';
-import type { WorkflowState } from '../src/shared/types.ts';
-import { buildDashboard } from '../src/ui/viewModel.ts';
-import { validProject } from './helpers/fixtures.ts';
+import { initialSession } from '../src/shared/session.ts';
+import { buildView, formatRemaining } from '../src/ui/viewModel.ts';
+import { testSettings } from './helpers/fixtures.ts';
 
-function snap(workflow: Partial<WorkflowState> = {}, overrides: Partial<UiSnapshot> = {}): UiSnapshot {
-  const project = validProject();
-  return {
-    settings: { schemaVersion: 1, activeProjectId: 'p1', projects: [project] },
-    settingsRecovered: false,
-    workflow: { ...initialWorkflowState(), projectId: 'p1', ...workflow },
-    validation: validateProject(project),
-    prompt: { text: 'Read AUTOPILOT.md', errors: [], warnings: [], cycle: 1 },
-    chatgptTabAvailable: true,
-    ...overrides,
-  };
+const tab = { tabId: 1, title: 'Build the app', conversation: '/c/abc' };
+function snap(session: Partial<UiSnapshot['session']>, extra: Partial<UiSnapshot> = {}): UiSnapshot {
+  return { settings: testSettings({ maxCycles: 10 }), session: { ...initialSession(), ...session }, sessionTab: null, activeTab: tab, now: 1000, ...extra };
 }
 
-test('no project: everything disabled and the next step says so', () => {
-  const m = buildDashboard(snap({}, { settings: { schemaVersion: 1, activeProjectId: null, projects: [] }, validation: null, prompt: null }), 0);
-  assert.equal(m.hasProject, false);
-  assert.match(m.nextStep, /Create a project/);
-  assert.ok(Object.values(m.actions).every((v) => v === false));
+test('each state maps to its label and controls', () => {
+  const stopped = buildView(snap({}), 1000);
+  assert.equal(stopped.statusLabel, 'Stopped');
+  assert.ok(stopped.canStart && !stopped.canPause && !stopped.canStop);
+  const watching = buildView(snap({ run: 'running', phase: 'watching' }, { sessionTab: tab }), 1000);
+  assert.equal(watching.statusLabel, 'Waiting for ChatGPT');
+  assert.ok(watching.canPause && watching.canStop && !watching.canResume && !watching.canStart);
+  assert.equal(buildView(snap({ run: 'running', phase: 'delay', dueAt: 6000, pendingKey: 'k' }), 1000).statusLabel, 'Waiting before continuation');
+  assert.equal(buildView(snap({ run: 'running', phase: 'submitting', pendingKey: 'k' }), 1000).statusLabel, 'Running');
+  const paused = buildView(snap({ run: 'paused', reason: 'composer_has_text' }), 1000);
+  assert.ok(paused.canResume && paused.canStop && !paused.canPause);
+  assert.match(paused.detail, /message box already contains text/);
+  const error = buildView(snap({ run: 'error', reason: 'usage_limit', detail: 'Nothing will be sent until you resume.' }), 1000);
+  assert.equal(error.statusLabel, 'Error');
+  assert.match(error.lastError, /usage limit: Nothing will be sent/);
 });
 
-test('inactive valid project: only start (and copy) are available', () => {
-  const m = buildDashboard(snap(), 0);
-  assert.equal(m.actions.start, true);
-  assert.equal(m.actions.copy, true);
-  assert.equal(m.actions.insert, false);
-  assert.equal(m.actions.pause, false);
-  assert.equal(m.handoffStartsCycle, false);
+test('session facts: cycles with limit or ∞, countdown, conversation', () => {
+  const view = buildView(snap({ run: 'running', phase: 'delay', dueAt: 8500, pendingKey: 'k', cycles: 3 }, { sessionTab: tab }), 1000);
+  assert.equal(view.cycles, '3 / 10');
+  assert.equal(view.countdown, '8s');
+  assert.equal(view.conversation, 'Build the app');
+  const unlimited = buildView({ ...snap({ cycles: 7 }), settings: testSettings({ maxCycles: 0 }) }, 0);
+  assert.equal(unlimited.cycles, '7 / ∞');
+  assert.equal(formatRemaining(125_000), '2m 05s');
 });
 
-test('active and ready: hand-off starts a cycle; insert needs a ChatGPT tab', () => {
-  const m = buildDashboard(snap({ monitoring: 'active', phase: 'ready' }), 0);
-  assert.equal(m.handoffStartsCycle, true);
-  assert.equal(m.actions.insert, true);
-  assert.equal(m.actions.review, false);
-  assert.equal(buildDashboard(snap({ monitoring: 'active' }, { chatgptTabAvailable: false }), 0).actions.insert, false);
-});
-
-test('needs review: review enabled, insert disabled, next step asks for review', () => {
-  const m = buildDashboard(snap({ monitoring: 'active', phase: 'needs_review', cycle: 1, responseStatus: 'complete' }), 0);
-  assert.equal(m.actions.review, true);
-  assert.equal(m.actions.insert, false);
-  assert.match(m.nextStep, /mark the cycle reviewed/);
-  assert.equal(m.observed.tone, 'success');
-});
-
-test('observed and reported information are labelled separately', () => {
-  const m = buildDashboard(snap({ monitoring: 'stopped', stopReason: 'milestone_reported', lastReviewOutcome: 'milestone_reported', responseStatus: 'unknown' }), 0);
-  assert.equal(m.observed.status, 'Unknown');
-  assert.match(m.reported.outcome, /as reported by ChatGPT, not verified/);
-  assert.match(m.workflow.stopReason, /You recorded/);
-  assert.equal(m.actions.reset, true);
-  assert.equal(m.actions.start, true);
-});
-
-test('usage-limit pause explains that nothing is resent', () => {
-  const m = buildDashboard(snap({ monitoring: 'paused', pauseReason: 'usage_limit', responseStatus: 'usage_limit' }), 0);
-  assert.match(m.workflow.monitoring, /usage-limit/);
-  assert.match(m.nextStep, /Nothing is resent automatically/);
-  assert.equal(m.actions.resume, true);
-  assert.equal(m.observed.tone, 'danger');
-});
-
-test('invalid configuration lists the problems and blocks start', () => {
-  const project = validProject({ milestone: '' });
-  const m = buildDashboard(snap({}, { settings: { schemaVersion: 1, activeProjectId: 'p1', projects: [project] }, validation: validateProject(project) }), 0);
-  assert.equal(m.configValid, false);
-  assert.equal(m.actions.start, false);
-  assert.match(m.configProblems.join(' '), /milestone/);
-});
-
-test('recovered storage is surfaced', () => {
-  assert.ok(buildDashboard(snap({ recoveredFromCorruption: true }), 0).recoveredNotice);
-  assert.equal(buildDashboard(snap(), 0).recoveredNotice, null);
+test('Start explains what is missing when no ChatGPT tab is active', () => {
+  const view = buildView(snap({}, { activeTab: null }), 0);
+  assert.equal(view.canStart, false);
+  assert.match(view.startHint ?? '', /Open a ChatGPT conversation/);
 });

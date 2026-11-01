@@ -17,7 +17,7 @@ export interface DetectorOptions {
   read: () => PageObservation;
   emit: (observation: PageObservation) => void;
   timers: Timers;
-  /** How long the page must stay out of "generating" before the end is reported. */
+  /** How long the page must stay out of "generating" before the end is reported (the completion confirmation delay). */
   settleMs?: number;
   /** Coalescing window for bursts of DOM mutations. */
   coalesceMs?: number;
@@ -32,10 +32,12 @@ export interface Detector {
   current(): PageObservation;
   /** Forgets the last report so the next evaluation is sent again. */
   resetReported(): void;
+  /** Changes the completion confirmation delay (takes effect for the next window). */
+  setSettleMs(ms: number): void;
   dispose(): void;
 }
 
-export const DEFAULT_SETTLE_MS = 1500;
+export const DEFAULT_SETTLE_MS = 3000;
 export const DEFAULT_COALESCE_MS = 150;
 
 export function sameReport(a: PageObservation | null, b: PageObservation): boolean {
@@ -44,7 +46,7 @@ export function sameReport(a: PageObservation | null, b: PageObservation): boole
 
 export function createDetector(options: DetectorOptions): Detector {
   const { read, emit, timers } = options;
-  const settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
+  let settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
   const coalesceMs = options.coalesceMs ?? DEFAULT_COALESCE_MS;
   let reported: PageObservation | null = null;
   let settleTimer: unknown = null;
@@ -101,6 +103,9 @@ export function createDetector(options: DetectorOptions): Detector {
     },
     resetReported() {
       reported = null;
+    },
+    setSettleMs(ms) {
+      if (Number.isFinite(ms) && ms >= 0) settleMs = ms;
     },
     dispose() {
       disposed = true;

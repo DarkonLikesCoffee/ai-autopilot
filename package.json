@@ -1,9 +1,9 @@
 {
-  "name": "chatgpt-project-autopilot",
+  "name": "chatgpt-autopilot",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Chrome extension (MV3) that manages AUTOPILOT.md-driven continuation prompts for ChatGPT. Never submits messages by itself.",
+  "description": "Chrome extension (MV3) that automatically sends a continuation prompt each time ChatGPT finishes a response.",
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",

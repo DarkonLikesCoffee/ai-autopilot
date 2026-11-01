@@ -23,7 +23,6 @@ const options = {
   // Content scripts cannot be ES modules; IIFE works for every context.
   format: 'iife',
   target: 'chrome116',
-  loader: { '.md': 'text' },
   sourcemap: 'linked',
   logLevel: 'info',
   legalComments: 'none',

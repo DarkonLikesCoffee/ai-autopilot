@@ -1,66 +1,65 @@
 // Message contracts between the UI, the background service worker and the
 // content script. Every message is validated on receipt.
 
-import type { HandoffMethod } from './workflow.ts';
-import type { PageObservation, ProjectSettings, ReviewOutcome, SettingsStore, ValidationResult, WorkflowState } from './types.ts';
+import type { SubmitRequest, SubmitResult } from '../content/composer.ts';
+import type { PageObservation, SessionState, Settings } from './types.ts';
 
 /** UI -> background */
 export type UiRequest =
   | { type: 'GET_SNAPSHOT' }
-  | { type: 'SAVE_PROJECT'; project: ProjectSettings }
-  | { type: 'CREATE_PROJECT' }
-  | { type: 'DELETE_PROJECT'; projectId: string }
-  | { type: 'SELECT_PROJECT'; projectId: string }
-  | { type: 'START_SESSION' }
-  | { type: 'RECORD_HANDOFF'; method: 'copy' }
-  | { type: 'INSERT_PROMPT'; overwrite?: boolean }
-  | { type: 'MARK_REVIEWED'; outcome: ReviewOutcome }
+  | { type: 'START' }
   | { type: 'PAUSE' }
   | { type: 'RESUME' }
   | { type: 'STOP' }
-  | { type: 'RESET' }
-  | { type: 'REFRESH_STATUS' };
+  | { type: 'SAVE_SETTINGS'; settings: Settings }
+  | { type: 'RESET_SETTINGS' };
+
+export interface TabInfo {
+  tabId: number;
+  title: string;
+  conversation: string | null;
+}
 
 export interface UiSnapshot {
-  settings: SettingsStore;
-  settingsRecovered: boolean;
-  workflow: WorkflowState;
-  validation: ValidationResult | null;
-  /** Rendered continuation prompt for the next cycle, or null when it cannot be rendered. */
-  prompt: { text: string; errors: string[]; warnings: string[]; cycle: number } | null;
-  /** Whether a ChatGPT tab exists that the prompt could be inserted into. */
-  chatgptTabAvailable: boolean;
+  settings: Settings;
+  session: SessionState;
+  /** The tab the session sends to, if it still exists. */
+  sessionTab: TabInfo | null;
+  /** The active ChatGPT tab in the current window (where Start would bind), if any. */
+  activeTab: TabInfo | null;
+  /** Background clock, so the UI can show the countdown without clock skew issues. */
+  now: number;
 }
 
 export type UiResponse =
   | { ok: true; snapshot: UiSnapshot; note?: string }
-  | { ok: false; error: string; code?: string; snapshot?: UiSnapshot };
+  | { ok: false; error: string; snapshot?: UiSnapshot };
 
 /** content -> background */
 export type ContentReport =
   | { type: 'PAGE_OBSERVATION'; observation: PageObservation }
-  | { type: 'CONTENT_READY'; observation: PageObservation };
+  | { type: 'CONTENT_READY'; observation: PageObservation }
+  /** The page-side timer for the delay fired; the background checks whether it is really due. */
+  | { type: 'DUE_PING' }
+  /** Sent after every submission attempt, so a restarted worker still learns the outcome. */
+  | { type: 'SUBMIT_REPORT'; key: string; result: SubmitResult };
 
 /** background -> content */
 export type ContentCommand =
-  | { type: 'INSERT_PROMPT'; text: string; overwrite?: boolean }
-  | { type: 'GET_OBSERVATION' };
+  | { type: 'GET_OBSERVATION' }
+  | { type: 'SUBMIT'; key: string; request: SubmitRequest }
+  | { type: 'SCHEDULE_PING'; dueAt: number; now: number };
 
-export type InsertResult =
-  | { ok: true; verified: boolean }
-  | { ok: false; error: string; code?: string };
+export type { SubmitRequest, SubmitResult };
 
-export type { HandoffMethod };
-
-const UI_TYPES = new Set<UiRequest['type']>([
-  'GET_SNAPSHOT', 'SAVE_PROJECT', 'CREATE_PROJECT', 'DELETE_PROJECT', 'SELECT_PROJECT', 'START_SESSION',
-  'RECORD_HANDOFF', 'INSERT_PROMPT', 'MARK_REVIEWED', 'PAUSE', 'RESUME', 'STOP', 'RESET', 'REFRESH_STATUS',
-]);
+const UI_TYPES = new Set<UiRequest['type']>(['GET_SNAPSHOT', 'START', 'PAUSE', 'RESUME', 'STOP', 'SAVE_SETTINGS', 'RESET_SETTINGS']);
 
 export function isUiRequest(value: unknown): value is UiRequest {
   if (!value || typeof value !== 'object') return false;
   const type = (value as { type?: unknown }).type;
-  return typeof type === 'string' && UI_TYPES.has(type as UiRequest['type']);
+  if (typeof type !== 'string' || !UI_TYPES.has(type as UiRequest['type'])) return false;
+  if (type === 'SAVE_SETTINGS') return !!(value as { settings?: unknown }).settings && typeof (value as { settings?: unknown }).settings === 'object';
+  return true;
 }
 
 const STATUS_VALUES = new Set(['unknown', 'idle', 'generating', 'complete', 'error', 'usage_limit']);
@@ -76,8 +75,24 @@ export function isPageObservation(value: unknown): value is PageObservation {
   );
 }
 
+const OUTCOMES = new Set(['refused', 'submitted', 'not_submitted', 'uncertain']);
+
+export function isSubmitResult(value: unknown): value is SubmitResult {
+  return !!value && typeof value === 'object' && OUTCOMES.has((value as { outcome?: unknown }).outcome as string);
+}
+
 export function isContentReport(value: unknown): value is ContentReport {
   if (!value || typeof value !== 'object') return false;
   const r = value as Record<string, unknown>;
-  return (r.type === 'PAGE_OBSERVATION' || r.type === 'CONTENT_READY') && isPageObservation(r.observation);
+  switch (r.type) {
+    case 'PAGE_OBSERVATION':
+    case 'CONTENT_READY':
+      return isPageObservation(r.observation);
+    case 'DUE_PING':
+      return true;
+    case 'SUBMIT_REPORT':
+      return typeof r.key === 'string' && isSubmitResult(r.result);
+    default:
+      return false;
+  }
 }

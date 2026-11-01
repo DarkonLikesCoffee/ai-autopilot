@@ -1,126 +1,110 @@
 // Shared data shapes. Everything here is plain JSON so it can be persisted in
 // chrome.storage and passed through extension messaging unchanged.
 
-export interface ProjectSettings {
-  id: string;
-  projectName: string;
-  repositoryUrl: string;
-  defaultBranch: string;
-  milestone: string;
-  autopilotPath: string;
-  promptTemplate: string;
-  /** Extra standing rules the user keeps in the extension (rendered via {{projectRules}}). */
-  projectRules: string;
-  maxCyclesPerSession: number;
-  showNotifications: boolean;
-  /** Ask for an extra confirmation before a prompt is handed off (copied or inserted). */
-  requireConfirmation: boolean;
-}
-
-export interface SettingsStore {
-  schemaVersion: 1;
-  activeProjectId: string | null;
-  projects: ProjectSettings[];
+export interface Settings {
+  schemaVersion: 2;
+  /** Sent unchanged after every completed response. */
+  prompt: string;
+  /** Wait between a confirmed completion and sending the continuation. */
+  delaySeconds: number;
+  /** How long the page must stay finished before a response counts as complete. */
+  confirmSeconds: number;
+  /** Maximum continuations per session; 0 means no extension-imposed limit. */
+  maxCycles: number;
+  notifications: boolean;
 }
 
 /**
  * What the content script observed on the ChatGPT page. "unknown" means the
  * page did not expose enough information; it is never upgraded to a guess.
  */
-export type ResponseStatus =
-  | 'unknown'
-  | 'idle'
-  | 'generating'
-  | 'complete'
-  | 'error'
-  | 'usage_limit';
-
-export type MonitoringState = 'inactive' | 'active' | 'paused' | 'stopped';
-
-/**
- * ready              – a continuation prompt is prepared and waits for the user to hand it off
- * awaiting_response  – the user copied/inserted the prompt; waiting for ChatGPT's response
- * needs_review       – a response appears complete; the user should review it
- */
-export type CyclePhase = 'ready' | 'awaiting_response' | 'needs_review';
-
-export type StopReason =
-  | 'user_stopped'
-  | 'max_cycles_reached'
-  | 'milestone_reported'
-  | 'blocker_reported'
-  | 'project_changed';
-
-export type PauseReason = 'user' | 'usage_limit';
-
-/** What the user recorded after reading ChatGPT's reply. This is reported, not observed. */
-export type ReviewOutcome = 'continue' | 'milestone_reported' | 'blocker_reported';
-
-export interface WorkflowState {
-  schemaVersion: 1;
-  projectId: string | null;
-  monitoring: MonitoringState;
-  pauseReason: PauseReason | null;
-  phase: CyclePhase;
-  /** Number of continuation prompts handed off in this session. */
-  cycle: number;
-  /** Observed by the content script. */
-  responseStatus: ResponseStatus;
-  /** Opaque identifier of the latest assistant response seen (conversation path + message id or count). */
-  lastResponseKey: string | null;
-  /** Response key that was current when the prompt was handed off; a completion must differ from it. */
-  responseKeyAtHandoff: string | null;
-  /** Whether the tracked tab was observed generating since the last hand-off. */
-  generationSeenSinceHandoff: boolean;
-  /** Keys for which a completion notification was already shown. Bounded. */
-  notifiedResponseKeys: string[];
-  /** Whether the latest observed response has been reviewed by the user. */
-  latestReviewed: boolean;
-  promptPrepared: boolean;
-  trackedTabId: number | null;
-  conversationUrl: string | null;
-  lastEventAt: number | null;
-  lastContinuationAt: number | null;
-  lastReviewOutcome: ReviewOutcome | null;
-  stopReason: StopReason | null;
-  /** Set when stored state was unreadable and replaced with defaults. */
-  recoveredFromCorruption: boolean;
-  /** Bounded list of recent workflow events, newest last. Never contains ChatGPT message text. */
-  log: WorkflowLogEntry[];
-}
-
-export interface WorkflowLogEntry {
-  at: number;
-  source: 'observed' | 'user' | 'system';
-  message: string;
-}
+export type ResponseStatus = 'unknown' | 'idle' | 'generating' | 'complete' | 'error' | 'usage_limit';
 
 /** Observation sent by a content script. Never contains message text. */
 export interface PageObservation {
   status: ResponseStatus;
+  /** "<conversation path>|<last assistant message marker>", or null without an assistant message. */
   responseKey: string | null;
   url: string;
-  /** Diagnostic: which signals were present, for the "why unknown" display. */
   signals: PageSignals;
 }
 
 export interface PageSignals {
   composerFound: boolean;
+  /** The composer contains text (never the text itself). */
+  composerHasText: boolean;
   stopControlFound: boolean;
   sendControlFound: boolean;
   streamingMarkerFound: boolean;
   assistantMessageCount: number;
+  userMessageCount: number;
   errorNoticeFound: boolean;
   usageLimitNoticeFound: boolean;
+  /** Login screen or session-expired notice. */
+  authRequired: boolean;
 }
 
-export interface ValidationIssue {
-  field: keyof ProjectSettings | 'general';
+/**
+ * stopped – no session
+ * running – a session is active (see SessionPhase)
+ * paused  – the user paused, or a safeguard paused because something needs a look
+ * error   – a condition that must not be retried automatically (usage limit, failed submission)
+ */
+export type RunState = 'stopped' | 'running' | 'paused' | 'error';
+
+/**
+ * watching   – waiting for ChatGPT to generate and finish a response
+ * delay      – a response finished; the continuation is sent when the delay ends
+ * submitting – the continuation is being inserted and sent (recorded before the attempt)
+ */
+export type SessionPhase = 'watching' | 'delay' | 'submitting';
+
+export type HaltReason =
+  | 'user'
+  | 'max_cycles'
+  | 'usage_limit'
+  | 'auth_required'
+  | 'page_error'
+  | 'conversation_changed'
+  | 'tab_closed'
+  | 'browser_restarted'
+  | 'composer_has_text'
+  | 'submit_failed'
+  | 'submission_uncertain'
+  | 'tab_unreachable';
+
+export interface SessionState {
+  schemaVersion: 2;
+  run: RunState;
+  phase: SessionPhase;
+  /** Why the session is paused, in error, or stopped (null while running). */
+  reason: HaltReason | null;
+  /** Detail for the reason (shown to the user; never page text). */
+  detail: string | null;
+  /** The tab this session sends to. Tab ids do not survive a browser restart. */
+  tabId: number | null;
+  /** Path of the conversation this session belongs to. */
+  conversation: string | null;
+  /** Continuations sent in this session. */
+  cycles: number;
+  /** A generation was observed since the session started or the last continuation. */
+  generationSeen: boolean;
+  /** Response the pending continuation answers (phase delay/submitting). */
+  pendingKey: string | null;
+  /** When the delay ends (phase delay). */
+  dueAt: number | null;
+  /** When the current submission attempt started (phase submitting). */
+  submitStartedAt: number | null;
+  /** Responses a continuation was sent (or attempted) for. Never submitted for again. Bounded. */
+  answeredKeys: string[];
+  lastStatus: ResponseStatus;
+  lastContinuationAt: number | null;
+  startedAt: number | null;
+  updatedAt: number | null;
+  log: LogEntry[];
+}
+
+export interface LogEntry {
+  at: number;
   message: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: ValidationIssue[];
-  warnings: ValidationIssue[];
 }

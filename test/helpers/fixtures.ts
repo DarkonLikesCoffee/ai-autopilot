@@ -2,9 +2,9 @@
 
 import type { ElementLike, QueryRoot } from '../../src/content/page.ts';
 import { DEFAULT_SELECTORS } from '../../src/content/selectors.ts';
-import { defaultProject } from '../../src/shared/settings.ts';
+import { defaultSettings } from '../../src/shared/settings.ts';
 import type { StorageAreaLike } from '../../src/shared/storage.ts';
-import type { PageObservation, PageSignals, ProjectSettings } from '../../src/shared/types.ts';
+import type { PageObservation, PageSignals, Settings } from '../../src/shared/types.ts';
 
 export interface FakeElementSpec {
   text?: string;
@@ -59,32 +59,27 @@ export function fakePage(spec: PageSpec): QueryRoot {
 export function signals(overrides: Partial<PageSignals> = {}): PageSignals {
   return {
     composerFound: true,
+    composerHasText: false,
     stopControlFound: false,
     sendControlFound: true,
     streamingMarkerFound: false,
     assistantMessageCount: 0,
+    userMessageCount: 0,
     errorNoticeFound: false,
     usageLimitNoticeFound: false,
+    authRequired: false,
     ...overrides,
   };
 }
 
 export const CONVO = 'https://chatgpt.com/c/abc';
 
-export function obs(status: PageObservation['status'], key: string | null = null, url = CONVO): PageObservation {
-  return { status, responseKey: key, url, signals: signals() };
+export function obs(status: PageObservation['status'], key: string | null = null, url = CONVO, overrides: Partial<PageSignals> = {}): PageObservation {
+  return { status, responseKey: key, url, signals: signals(overrides) };
 }
 
-export function validProject(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
-  return {
-    ...defaultProject('p1'),
-    projectName: 'Demo',
-    repositoryUrl: 'https://github.com/octo/demo',
-    defaultBranch: 'main',
-    milestone: 'MVP: login and dashboard',
-    maxCyclesPerSession: 3,
-    ...overrides,
-  };
+export function testSettings(overrides: Partial<Settings> = {}): Settings {
+  return { ...defaultSettings(), delaySeconds: 5, confirmSeconds: 2, maxCycles: 0, ...overrides };
 }
 
 export class MemoryStorage implements StorageAreaLike {

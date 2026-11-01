@@ -1,13 +1,17 @@
 // Service worker entry point: wires chrome.* APIs to the controller.
 
-import { createController, type TabAccess } from './controller.ts';
-import { isContentReport, isPageObservation, isUiRequest, type ContentCommand, type InsertResult } from '../shared/messages.ts';
+import { createController, type Scheduler, type TabAccess } from './controller.ts';
+import { isContentReport, isPageObservation, isSubmitResult, isUiRequest, type ContentCommand, type TabInfo } from '../shared/messages.ts';
 import { createLogger } from '../shared/logger.ts';
-import { loadWorkflow } from '../shared/storage.ts';
-import type { WorkflowState } from '../shared/types.ts';
+import { conversationPath } from '../shared/session.ts';
+import { loadSession } from '../shared/storage.ts';
+import type { SessionState } from '../shared/types.ts';
 
 const log = createLogger('background');
 const CHATGPT_PATTERNS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
+const ALARM = 'autopilot-due';
+/** Cleared by Chrome only when the browser restarts; tells a browser restart from a worker restart. */
+const ALIVE_KEY = 'autopilot.browserSession';
 
 export function isChatgptUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -19,56 +23,78 @@ export function isChatgptUrl(url: string | undefined): boolean {
   }
 }
 
+function info(tab: chrome.tabs.Tab | undefined): TabInfo | null {
+  if (!tab || tab.id === undefined || !isChatgptUrl(tab.url)) return null;
+  return { tabId: tab.id, title: tab.title ?? '', conversation: conversationPath(tab.url ?? '') };
+}
+
 const tabs: TabAccess = {
-  async findTargetTab(preferredTabId) {
-    if (preferredTabId !== null) {
-      try {
-        const tab = await chrome.tabs.get(preferredTabId);
-        if (isChatgptUrl(tab.url)) return preferredTabId;
-      } catch {
-        // The tab is gone; fall through to the active tab.
-      }
-    }
+  async activeChatgptTab() {
     const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (active?.id !== undefined && isChatgptUrl(active.url)) return active.id;
-    // Otherwise use the only ChatGPT tab, or the only one that is visible in its window.
-    // With several candidates, refuse rather than guess which conversation is meant.
-    const all = await chrome.tabs.query({ url: CHATGPT_PATTERNS });
-    if (all.length === 1) return all[0]?.id ?? null;
-    const visible = all.filter((tab) => tab.active);
-    return visible.length === 1 ? visible[0]?.id ?? null : null;
+    return info(active);
   },
-  async anyChatgptTab() {
-    return (await chrome.tabs.query({ url: CHATGPT_PATTERNS })).length > 0;
+  async tabInfo(tabId) {
+    try {
+      return info(await chrome.tabs.get(tabId));
+    } catch {
+      return null;
+    }
+  },
+  async findConversationTab(path) {
+    const all = await chrome.tabs.query({ url: CHATGPT_PATTERNS });
+    const matches = all.filter((tab) => tab.url && conversationPath(tab.url) === path);
+    return matches.length === 1 ? matches[0]?.id ?? null : null;
   },
   async getObservation(tabId) {
     const command: ContentCommand = { type: 'GET_OBSERVATION' };
     const response: unknown = await chrome.tabs.sendMessage(tabId, command);
     return isPageObservation(response) ? response : null;
   },
-  async insert(tabId, text, overwrite) {
-    const command: ContentCommand = { type: 'INSERT_PROMPT', text, overwrite };
-    const response = (await chrome.tabs.sendMessage(tabId, command)) as InsertResult | undefined;
-    return response ?? { ok: false, error: 'The ChatGPT tab did not answer.' };
+  async submit(tabId, key, request) {
+    const command: ContentCommand = { type: 'SUBMIT', key, request };
+    const response: unknown = await chrome.tabs.sendMessage(tabId, command);
+    return isSubmitResult(response) ? response : null;
+  },
+  async schedulePing(tabId, dueAt, now) {
+    const command: ContentCommand = { type: 'SCHEDULE_PING', dueAt, now };
+    await chrome.tabs.sendMessage(tabId, command);
   },
 };
 
-const BADGES: Record<string, { text: string; color: string; title: string }> = {
-  needs_review: { text: 'DONE', color: '#1a7f37', title: 'Response appears complete. Review it.' },
-  generating: { text: '…', color: '#0969da', title: 'ChatGPT is generating' },
-  paused: { text: 'II', color: '#9a6700', title: 'Monitoring paused' },
-  limit: { text: '!', color: '#cf222e', title: 'Usage limit message shown' },
+// Three independent wake-ups for the end of the delay, all idempotent: a timer
+// (precise while the worker runs), an alarm (survives the worker being
+// stopped) and a ping from the page (see SCHEDULE_PING).
+let timer: ReturnType<typeof setTimeout> | null = null;
+const scheduler: Scheduler = {
+  async schedule(dueAt) {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      void controller.handleDue();
+    }, Math.max(0, dueAt - Date.now()));
+    await chrome.alarms.create(ALARM, { when: dueAt });
+  },
+  async cancel() {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    await chrome.alarms.clear(ALARM);
+  },
 };
 
-async function updateBadge(state: WorkflowState): Promise<void> {
-  let badge: (typeof BADGES)[string] | null = null;
-  if (state.monitoring === 'paused') badge = state.pauseReason === 'usage_limit' ? BADGES.limit! : BADGES.paused!;
-  else if (state.monitoring === 'active' && state.phase === 'needs_review') badge = BADGES.needs_review!;
-  else if (state.monitoring === 'active' && state.responseStatus === 'generating') badge = BADGES.generating!;
+const BADGES = {
+  running: { text: '▶', color: '#1a7f37' },
+  delay: { text: '…', color: '#0969da' },
+  paused: { text: 'II', color: '#9a6700' },
+  error: { text: '!', color: '#cf222e' },
+} as const;
+
+async function updateBadge(state: SessionState): Promise<void> {
+  const badge = state.run === 'running' ? (state.phase === 'watching' ? BADGES.running : BADGES.delay) : state.run === 'paused' ? BADGES.paused : state.run === 'error' ? BADGES.error : null;
   try {
     await chrome.action.setBadgeText({ text: badge?.text ?? '' });
     if (badge) await chrome.action.setBadgeBackgroundColor({ color: badge.color });
-    await chrome.action.setTitle({ title: badge ? `ChatGPT Project Autopilot — ${badge.title}` : 'ChatGPT Project Autopilot' });
+    const status = state.run === 'stopped' ? 'stopped' : `${state.run}, ${state.cycles} continuation${state.cycles === 1 ? '' : 's'} sent`;
+    await chrome.action.setTitle({ title: `ChatGPT Autopilot — ${status}` });
   } catch (error) {
     log.warn('Badge update failed', error);
   }
@@ -77,24 +103,25 @@ async function updateBadge(state: WorkflowState): Promise<void> {
 const controller = createController({
   storage: chrome.storage.local,
   tabs,
+  scheduler,
   now: () => Date.now(),
   log,
   onStateChange: updateBadge,
-  async notify(effect) {
-    await chrome.notifications.create(effect.id, {
+  async notify(request) {
+    await chrome.notifications.create(request.id, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: effect.title,
-      message: effect.message,
-      priority: effect.kind === 'response_complete' ? 1 : 2,
+      title: request.title,
+      message: request.message,
+      priority: 2,
     });
   },
 });
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;
-  // Extension pages (popup, side panel — also when opened in a tab) send UI requests;
-  // content scripts on ChatGPT send page observations. Nothing else is accepted.
+  // Extension pages (popup, side panel) send UI requests; content scripts on
+  // ChatGPT send page reports. Nothing else is accepted.
   const fromExtensionPage = sender.url?.startsWith(chrome.runtime.getURL('')) === true;
   if (!fromExtensionPage) {
     if (sender.tab?.id !== undefined && isContentReport(message) && isChatgptUrl(sender.url ?? sender.tab.url)) {
@@ -112,15 +139,17 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return false;
 });
 
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM) void controller.handleDue();
+});
 chrome.tabs.onRemoved.addListener((tabId) => void controller.handleTabRemoved(tabId));
-chrome.runtime.onStartup.addListener(() => void controller.handleStartup());
 
 chrome.notifications.onClicked.addListener((notificationId) => {
   void (async () => {
-    const state = await loadWorkflow(chrome.storage.local);
-    if (state.trackedTabId !== null) {
+    const state = await loadSession(chrome.storage.local);
+    if (state.tabId !== null) {
       try {
-        const tab = await chrome.tabs.update(state.trackedTabId, { active: true });
+        const tab = await chrome.tabs.update(state.tabId, { active: true });
         if (tab?.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
       } catch {
         // The tab no longer exists.
@@ -132,5 +161,22 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: false }).catch((error: unknown) => log.warn('Side panel setup failed', error));
-  void loadWorkflow(chrome.storage.local).then(updateBadge);
 });
+
+// Every time the worker starts: after a browser restart the session pauses
+// (tab ids are no longer valid); after Chrome merely stopped the worker, the
+// pending delay is picked up again.
+void (async () => {
+  try {
+    const marker = await chrome.storage.session.get(ALIVE_KEY);
+    if (marker[ALIVE_KEY]) {
+      await controller.handleWake();
+    } else {
+      await chrome.storage.session.set({ [ALIVE_KEY]: true });
+      await controller.handleStartup();
+    }
+    await updateBadge(await loadSession(chrome.storage.local));
+  } catch (error) {
+    log.error('Could not restore the session state', error);
+  }
+})();

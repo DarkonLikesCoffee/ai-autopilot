@@ -1,30 +1,48 @@
 // Background logic, independent of the chrome.* APIs so it can be tested.
-// It is the only writer of settings and workflow state. All operations run
-// one at a time and always start from persisted state, because Chrome may
-// stop the service worker between events.
+// It is the only writer of settings and session state. Every operation runs
+// one at a time and starts from persisted state, because Chrome may stop the
+// service worker between events. State is saved before effects are carried
+// out, so a restart can never repeat a submission.
 
-import type { ContentReport, InsertResult, UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
+import type { ContentReport, SubmitRequest, SubmitResult, TabInfo, UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
 import type { Logger } from '../shared/logger.ts';
-import { activeProject, defaultProject, looksLikeSecret, normalizeProject, validateProject } from '../shared/settings.ts';
-import { createSerialQueue, loadSettings, loadWorkflow, saveSettings, saveWorkflow, type StorageAreaLike } from '../shared/storage.ts';
-import { renderTemplate, templateValues } from '../shared/template.ts';
-import type { PageObservation, ProjectSettings, SettingsStore, WorkflowState } from '../shared/types.ts';
-import { transition, type NotifyEffect, type TransitionResult, type WorkflowEvent } from '../shared/workflow.ts';
+import { conversationPath, transition, type PrecheckFailure, type SessionEffect, type SessionEvent, type TransitionResult } from '../shared/session.ts';
+import { defaultSettings, normalizeSettings, validateSettings } from '../shared/settings.ts';
+import { createSerialQueue, loadSession, loadSettings, saveSession, saveSettings, type StorageAreaLike } from '../shared/storage.ts';
+import type { PageObservation, SessionState, Settings } from '../shared/types.ts';
 
 export interface TabAccess {
-  /** The tab a prompt should go to: the tracked tab if it still shows ChatGPT, else the active ChatGPT tab. */
-  findTargetTab(preferredTabId: number | null): Promise<number | null>;
-  anyChatgptTab(): Promise<boolean>;
-  /** Asks the content script in a tab for a fresh observation; null if it does not answer. */
+  /** The active tab of the focused window, if it shows ChatGPT. */
+  activeChatgptTab(): Promise<TabInfo | null>;
+  /** Information about a tab, or null if it is gone or no longer shows ChatGPT. */
+  tabInfo(tabId: number): Promise<TabInfo | null>;
+  /** A tab that shows this conversation, if exactly one does. */
+  findConversationTab(path: string): Promise<number | null>;
+  /** Asks the content script for a fresh observation; null if it does not answer. */
   getObservation(tabId: number): Promise<PageObservation | null>;
-  insert(tabId: number, text: string, overwrite: boolean): Promise<InsertResult>;
+  /** Asks the content script to send the continuation; null if it does not answer. */
+  submit(tabId: number, key: string, request: SubmitRequest): Promise<SubmitResult | null>;
+  /** Asks the content script to ping back when the delay ends (a backup for the worker's own timers). */
+  schedulePing(tabId: number, dueAt: number, now: number): Promise<void>;
+}
+
+export interface Scheduler {
+  schedule(dueAt: number): Promise<void> | void;
+  cancel(): Promise<void> | void;
+}
+
+export interface NotifyRequest {
+  id: string;
+  title: string;
+  message: string;
 }
 
 export interface ControllerDeps {
   storage: StorageAreaLike;
   tabs: TabAccess;
-  notify(effect: NotifyEffect): Promise<void>;
-  onStateChange?(state: WorkflowState): Promise<void> | void;
+  scheduler: Scheduler;
+  notify(request: NotifyRequest): Promise<void>;
+  onStateChange?(state: SessionState): Promise<void> | void;
   now(): number;
   log: Logger;
 }
@@ -32,271 +50,233 @@ export interface ControllerDeps {
 export interface Controller {
   handleUi(request: UiRequest): Promise<UiResponse>;
   handleContent(tabId: number, report: ContentReport): Promise<void>;
+  /** A timer, alarm or page ping says the delay may have ended. */
+  handleDue(): Promise<void>;
   handleTabRemoved(tabId: number): Promise<void>;
   handleStartup(): Promise<void>;
+  /** The service worker started (after being stopped by Chrome). */
+  handleWake(): Promise<void>;
 }
 
-class UserError extends Error {
-  readonly code: string | undefined;
-  constructor(message: string, code?: string) {
-    super(message);
-    this.code = code;
-  }
-}
+class UserError extends Error {}
 
-export function nextPromptCycle(state: WorkflowState): number {
-  if (state.monitoring === 'active' || state.monitoring === 'paused') {
-    return state.phase === 'awaiting_response' ? state.cycle : state.cycle + 1;
-  }
-  return 1;
-}
-
-export function renderPromptFor(project: ProjectSettings, state: WorkflowState): NonNullable<UiSnapshot['prompt']> {
-  const cycle = nextPromptCycle(state);
-  return { ...renderTemplate(project.promptTemplate, templateValues(project, cycle)), cycle };
+/** The background's own check of the live page before it records an attempt. */
+export function precheckObservation(state: SessionState, observation: PageObservation, key: string): PrecheckFailure | null {
+  if (conversationPath(observation.url) !== state.conversation) return 'conversation_changed';
+  if (observation.status === 'usage_limit') return 'usage_limit';
+  if (observation.signals.authRequired) return 'auth_required';
+  if (observation.status === 'generating') return 'generating';
+  if (observation.signals.composerHasText) return 'composer_has_text';
+  if (observation.status !== 'complete') return 'not_complete';
+  if (observation.responseKey !== key) return 'response_changed';
+  return null;
 }
 
 export function createController(deps: ControllerDeps): Controller {
   const { storage, tabs, log } = deps;
   const enqueue = createSerialQueue();
 
-  async function load(): Promise<{ settings: SettingsStore; settingsRecovered: boolean; workflow: WorkflowState }> {
-    const [{ store, recovered }, workflow] = await Promise.all([loadSettings(storage), loadWorkflow(storage)]);
-    return { settings: store, settingsRecovered: recovered, workflow };
+  async function safe<T>(promise: Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await promise;
+    } catch {
+      return fallback;
+    }
   }
 
-  async function apply(workflow: WorkflowState, event: WorkflowEvent, settings: SettingsStore): Promise<TransitionResult> {
-    const result = transition(workflow, event);
-    if (result.state !== workflow) {
-      await saveWorkflow(storage, result.state);
+  /** Applies an event: persists the new state first, then carries out its effects. */
+  async function apply(state: SessionState, event: SessionEvent, settings: Settings): Promise<TransitionResult> {
+    const result = transition(state, event);
+    if (result.state !== state) {
+      await saveSession(storage, result.state);
       await deps.onStateChange?.(result.state);
     }
-    const project = activeProject(settings);
-    const allowNotifications = project?.showNotifications ?? true;
-    for (const effect of result.effects) {
-      if (!allowNotifications) continue;
-      try {
-        await deps.notify(effect);
-      } catch (error) {
-        log.warn('Notification failed', error);
-      }
-    }
-    return result;
+    let current = result.state;
+    for (const effect of result.effects) current = await runEffect(current, effect, settings);
+    return { ...result, state: current };
   }
 
-  /** Keeps the workflow bound to the active project. */
-  async function reconcile(settings: SettingsStore, workflow: WorkflowState): Promise<WorkflowState> {
-    if (workflow.projectId === settings.activeProjectId) return workflow;
-    return (await apply(workflow, { type: 'SELECT_PROJECT', projectId: settings.activeProjectId, now: deps.now() }, settings)).state;
-  }
-
-  async function snapshot(settings: SettingsStore, settingsRecovered: boolean, workflow: WorkflowState): Promise<UiSnapshot> {
-    const project = activeProject(settings);
-    let chatgptTabAvailable = false;
-    try {
-      chatgptTabAvailable = await tabs.anyChatgptTab();
-    } catch (error) {
-      log.warn('Could not query tabs', error);
-    }
-    return {
-      settings,
-      settingsRecovered,
-      workflow,
-      validation: project ? validateProject(project) : null,
-      prompt: project ? renderPromptFor(project, workflow) : null,
-      chatgptTabAvailable,
-    };
-  }
-
-  function requireValidProject(settings: SettingsStore): ProjectSettings {
-    const project = activeProject(settings);
-    if (!project) throw new UserError('Create a project first.', 'no_project');
-    const validation = validateProject(project);
-    if (!validation.valid) {
-      throw new UserError(`The project settings need attention: ${validation.errors.map((e) => e.message).join(' ')}`, 'invalid_project');
-    }
-    return project;
-  }
-
-  function requirePrompt(project: ProjectSettings, workflow: WorkflowState): string {
-    const prompt = renderPromptFor(project, workflow);
-    if (prompt.errors.length || !prompt.text) throw new UserError(`The prompt template cannot be rendered: ${prompt.errors.join(' ')}`, 'template_error');
-    return prompt.text;
-  }
-
-  async function safeObservation(tabId: number): Promise<PageObservation | null> {
-    try {
-      return await tabs.getObservation(tabId);
-    } catch {
-      return null;
+  async function runEffect(state: SessionState, effect: SessionEffect, settings: Settings): Promise<SessionState> {
+    switch (effect.type) {
+      case 'schedule':
+        await safe(Promise.resolve(deps.scheduler.schedule(effect.dueAt)), undefined);
+        if (state.tabId !== null) await safe(tabs.schedulePing(state.tabId, effect.dueAt, deps.now()), undefined);
+        return state;
+      case 'cancel_schedule':
+        await safe(Promise.resolve(deps.scheduler.cancel()), undefined);
+        return state;
+      case 'notify':
+        if (settings.notifications) {
+          try {
+            await deps.notify({ id: effect.id, title: effect.title, message: effect.message });
+          } catch (error) {
+            log.warn('Notification failed', error);
+          }
+        }
+        return state;
+      case 'attempt':
+        return attempt(state, effect.key, settings);
     }
   }
 
-  async function refreshFromTab(settings: SettingsStore, workflow: WorkflowState): Promise<WorkflowState> {
-    const tabId = await tabs.findTargetTab(workflow.trackedTabId);
-    if (tabId === null) return workflow;
-    const observation = await safeObservation(tabId);
-    if (!observation) return workflow;
-    return (await apply(workflow, { type: 'OBSERVATION', tabId, observation, now: deps.now() }, settings)).state;
+  /** The delay ended: check the live page, record the attempt, then send. */
+  async function attempt(state: SessionState, key: string, settings: Settings): Promise<SessionState> {
+    const tabId = state.tabId;
+    const observation = tabId === null ? null : await safe(tabs.getObservation(tabId), null);
+    const now = deps.now();
+    if (tabId === null || observation === null) {
+      return (await apply(state, { type: 'PRECHECK_FAILED', key, reason: 'tab_unreachable', now }, settings)).state;
+    }
+    const failure = precheckObservation(state, observation, key);
+    if (failure) return (await apply(state, { type: 'PRECHECK_FAILED', key, reason: failure, now }, settings)).state;
+
+    // Write-ahead: the response is recorded as answered before anything is sent.
+    const begun = await apply(state, { type: 'SUBMIT_BEGIN', key, now }, settings);
+    if (begun.rejected) return begun.state;
+
+    const request: SubmitRequest = { text: settings.prompt, expectedPath: state.conversation ?? '', expectedKey: key };
+    const result = await safe(tabs.submit(tabId, key, request), null);
+    return applyResult(begun.state, key, result, settings);
+  }
+
+  async function applyResult(state: SessionState, key: string, result: SubmitResult | null, settings: Settings): Promise<SessionState> {
+    const now = deps.now();
+    let event: SessionEvent;
+    if (result === null) {
+      event = { type: 'SUBMIT_RESULT', key, outcome: 'uncertain', detail: 'the ChatGPT tab did not answer', sawGenerating: false, now };
+    } else if (result.outcome === 'refused') {
+      event = { type: 'SUBMIT_REFUSED', key, reason: result.reason, now };
+    } else if (result.outcome === 'submitted') {
+      event = { type: 'SUBMIT_RESULT', key, outcome: 'submitted', detail: null, sawGenerating: result.sawGenerating, now };
+    } else {
+      event = { type: 'SUBMIT_RESULT', key, outcome: result.outcome, detail: result.detail, sawGenerating: false, now };
+    }
+    return (await apply(state, event, settings)).state;
+  }
+
+  async function load(): Promise<{ settings: Settings; session: SessionState }> {
+    const [settings, session] = await Promise.all([loadSettings(storage), loadSession(storage)]);
+    return { settings, session };
+  }
+
+  async function snapshot(settings: Settings, session: SessionState): Promise<UiSnapshot> {
+    const [sessionTab, activeTab] = await Promise.all([
+      session.tabId === null ? Promise.resolve(null) : safe(tabs.tabInfo(session.tabId), null),
+      safe(tabs.activeChatgptTab(), null),
+    ]);
+    return { settings, session, sessionTab, activeTab, now: deps.now() };
+  }
+
+  /** The tab to resume in: the session's tab if it still exists, otherwise one showing the conversation. */
+  async function resumeTab(session: SessionState): Promise<number | null> {
+    if (session.tabId !== null && (await safe(tabs.tabInfo(session.tabId), null))) return session.tabId;
+    if (session.conversation && /\/c\//.test(session.conversation)) {
+      const found = await safe(tabs.findConversationTab(session.conversation), null);
+      if (found !== null) return found;
+    }
+    const active = await safe(tabs.activeChatgptTab(), null);
+    return active?.tabId ?? null;
   }
 
   async function handle(request: UiRequest): Promise<UiResponse> {
-    let { settings, settingsRecovered, workflow } = await load();
-    workflow = await reconcile(settings, workflow);
+    let { settings, session } = await load();
     let note: string | undefined;
     const now = deps.now();
-    const maxCycles = activeProject(settings)?.maxCyclesPerSession ?? 1;
 
-    const run = async (event: WorkflowEvent) => {
-      const result = await apply(workflow, event, settings);
-      if (result.rejected && result.state === workflow) throw new UserError(result.rejected);
-      workflow = result.state;
-      note = result.rejected ?? result.note;
-    };
-
-    const saveStore = async (next: SettingsStore) => {
-      await saveSettings(storage, next);
-      settings = next;
-      settingsRecovered = false;
-      workflow = await reconcile(settings, workflow);
+    const run = async (event: SessionEvent) => {
+      const result = await apply(session, event, settings);
+      if (result.rejected) throw new UserError(result.rejected);
+      session = result.state;
     };
 
     switch (request.type) {
       case 'GET_SNAPSHOT':
         break;
 
-      case 'REFRESH_STATUS':
-        workflow = await refreshFromTab(settings, workflow);
-        break;
-
-      case 'SAVE_PROJECT': {
-        const project = normalizeProject(request.project);
-        if (!project) throw new UserError('The project data is invalid.');
-        const secretField = (['projectName', 'repositoryUrl', 'defaultBranch', 'milestone', 'autopilotPath', 'promptTemplate', 'projectRules'] as const)
-          .find((field) => looksLikeSecret(project[field]));
-        if (secretField) throw new UserError('A field looks like it contains an access token or session secret. Remove it; the extension never stores credentials.', 'secret_detected');
-        const exists = settings.projects.some((p) => p.id === project.id);
-        const projects = exists ? settings.projects.map((p) => (p.id === project.id ? project : p)) : [...settings.projects, project];
-        await saveStore({ ...settings, projects, activeProjectId: settings.activeProjectId ?? project.id });
-        const validation = validateProject(project);
-        note = validation.valid ? 'Project saved.' : 'Saved as a draft. Fix the highlighted fields before starting a session.';
-        break;
-      }
-
-      case 'CREATE_PROJECT': {
-        const project = defaultProject();
-        await saveStore({ ...settings, projects: [...settings.projects, project], activeProjectId: project.id });
-        break;
-      }
-
-      case 'DELETE_PROJECT': {
-        if (!settings.projects.some((p) => p.id === request.projectId)) throw new UserError('That project no longer exists.');
-        const projects = settings.projects.filter((p) => p.id !== request.projectId);
-        const activeProjectId = settings.activeProjectId === request.projectId ? projects[0]?.id ?? null : settings.activeProjectId;
-        await saveStore({ ...settings, projects, activeProjectId });
-        note = 'Project deleted.';
-        break;
-      }
-
-      case 'SELECT_PROJECT':
-        if (!settings.projects.some((p) => p.id === request.projectId)) throw new UserError('That project no longer exists.');
-        await saveStore({ ...settings, activeProjectId: request.projectId });
-        break;
-
-      case 'START_SESSION': {
-        const project = requireValidProject(settings);
-        requirePrompt(project, workflow);
-        await run({ type: 'START_SESSION', projectId: project.id, now });
-        break;
-      }
-
-      case 'RECORD_HANDOFF': {
-        const project = requireValidProject(settings);
-        requirePrompt(project, workflow);
-        const tabId = await tabs.findTargetTab(workflow.trackedTabId);
-        const observation = tabId === null ? null : await safeObservation(tabId);
-        await run({
-          type: 'PROMPT_HANDED_OFF',
-          method: 'copy',
-          tabId: observation ? tabId : null,
-          currentResponseKey: observation?.responseKey ?? null,
-          maxCycles: project.maxCyclesPerSession,
-          now,
-        });
-        break;
-      }
-
-      case 'INSERT_PROMPT': {
-        const project = requireValidProject(settings);
-        const text = requirePrompt(project, workflow);
-        // Dry run: refuse before touching the page if the hand-off would be rejected.
-        const dry = transition(workflow, { type: 'PROMPT_HANDED_OFF', method: 'insert', tabId: null, currentResponseKey: null, maxCycles: project.maxCyclesPerSession, now });
-        if (dry.rejected) throw new UserError(dry.rejected);
-        const tabId = await tabs.findTargetTab(workflow.trackedTabId);
-        if (tabId === null) throw new UserError('Open your ChatGPT conversation and make it the active tab, then try again.', 'no_tab');
-        const observation = await safeObservation(tabId);
+      case 'START': {
+        const issues = validateSettings(settings);
+        if (issues.length) throw new UserError(`Fix the settings first: ${issues.map((i) => i.message).join(' ')}`);
+        const tab = await safe(tabs.activeChatgptTab(), null);
+        if (!tab) throw new UserError('Open your ChatGPT conversation in this window and make it the active tab, then start Autopilot.');
+        const observation = await safe(tabs.getObservation(tab.tabId), null);
         if (!observation) {
-          throw new UserError('The extension is not attached to that ChatGPT tab yet (for example, it was open before the extension was installed). Reload that tab yourself, or use Copy prompt.', 'no_content_script');
+          throw new UserError('Autopilot is not connected to that tab yet (it was open before the extension was installed or updated). Reload the ChatGPT tab, then start again.');
         }
-        if (observation.status === 'generating') throw new UserError('ChatGPT is still responding in that tab. Wait for it to finish.', 'generating');
-        if (observation.status === 'usage_limit') throw new UserError('ChatGPT is showing a usage-limit message. Nothing was inserted.', 'usage_limit');
-        let result: InsertResult;
-        try {
-          result = await tabs.insert(tabId, text, request.overwrite === true);
-        } catch (error) {
-          log.warn('Insert failed', error);
-          throw new UserError('The ChatGPT tab did not respond. Use Copy prompt instead.', 'insert_failed');
-        }
-        if (!result.ok) throw new UserError(result.error, result.code);
-        await run({
-          type: 'PROMPT_HANDED_OFF',
-          method: 'insert',
-          tabId,
-          currentResponseKey: observation.responseKey,
-          maxCycles: project.maxCyclesPerSession,
-          now,
-        });
-        note = note ?? 'Prompt inserted. Review it in ChatGPT and press Send yourself.';
+        await run({ type: 'START', tabId: tab.tabId, observation, now });
+        note = observation.status === 'generating'
+          ? 'Autopilot started. It continues once ChatGPT finishes this response.'
+          : 'Autopilot started. Send your first message; Autopilot continues each time ChatGPT finishes.';
         break;
       }
-
-      case 'MARK_REVIEWED':
-        await run({ type: 'MARK_REVIEWED', outcome: request.outcome, maxCycles, now });
-        break;
 
       case 'PAUSE':
         await run({ type: 'PAUSE', now });
         break;
 
-      case 'RESUME':
-        await run({ type: 'RESUME', now });
-        // Pick up anything that finished while paused.
-        workflow = await refreshFromTab(settings, workflow);
+      case 'RESUME': {
+        const tabId = await resumeTab(session);
+        const observation = tabId === null ? null : await safe(tabs.getObservation(tabId), null);
+        await run({ type: 'RESUME', tabId, observation, settings, now });
         break;
+      }
 
       case 'STOP':
-        await run({ type: 'STOP', reason: 'user_stopped', now });
+        await run({ type: 'STOP', now });
         break;
 
-      case 'RESET':
-        await run({ type: 'RESET', now });
+      case 'SAVE_SETTINGS': {
+        const candidate = { ...request.settings, schemaVersion: 2 as const };
+        const issues = validateSettings(candidate);
+        if (issues.length) throw new UserError(issues.map((i) => i.message).join(' '));
+        settings = normalizeSettings(candidate);
+        await saveSettings(storage, settings);
+        note = 'Settings saved.';
+        break;
+      }
+
+      case 'RESET_SETTINGS':
+        settings = defaultSettings();
+        await saveSettings(storage, settings);
+        note = 'Settings reset to the defaults.';
         break;
     }
 
-    return { ok: true, snapshot: await snapshot(settings, settingsRecovered, workflow), ...(note ? { note } : {}) };
+    return { ok: true, snapshot: await snapshot(settings, session), ...(note ? { note } : {}) };
+  }
+
+  const guarded = (label: string, task: () => Promise<void>) =>
+    enqueue(async () => {
+      try {
+        await task();
+      } catch (error) {
+        log.error(`${label} failed`, error);
+      }
+    });
+
+  async function due(): Promise<void> {
+    const { settings, session } = await load();
+    await apply(session, { type: 'DUE', now: deps.now() }, settings);
   }
 
   return {
     handleUi(request) {
+      // A snapshot only reads, so it does not wait behind a submission attempt in the queue.
+      if (request.type === 'GET_SNAPSHOT') {
+        return load().then(({ settings, session }) => snapshot(settings, session)).then(
+          (snap): UiResponse => ({ ok: true, snapshot: snap }),
+          (error: unknown): UiResponse => {
+            log.error('Snapshot failed', error);
+            return { ok: false, error: 'The extension could not read its state.' };
+          },
+        );
+      }
       return enqueue(async () => {
         try {
           return await handle(request);
         } catch (error) {
-          const { settings, settingsRecovered, workflow } = await load().catch(() => ({ settings: null, settingsRecovered: false, workflow: null }));
-          const snap = settings && workflow ? await snapshot(settings, settingsRecovered, workflow) : undefined;
-          if (error instanceof UserError) {
-            return { ok: false, error: error.message, ...(error.code ? { code: error.code } : {}), ...(snap ? { snapshot: snap } : {}) };
-          }
+          const loaded = await load().catch(() => null);
+          const snap = loaded ? await snapshot(loaded.settings, loaded.session) : undefined;
+          if (error instanceof UserError) return { ok: false, error: error.message, ...(snap ? { snapshot: snap } : {}) };
           log.error(`Request ${request.type} failed`, error);
           return { ok: false, error: 'Something went wrong in the extension. Details are in the service worker console.', ...(snap ? { snapshot: snap } : {}) };
         }
@@ -304,36 +284,40 @@ export function createController(deps: ControllerDeps): Controller {
     },
 
     handleContent(tabId, report) {
-      return enqueue(async () => {
-        try {
-          const { settings, workflow } = await load();
-          const current = await reconcile(settings, workflow);
-          await apply(current, { type: 'OBSERVATION', tabId, observation: report.observation, now: deps.now() }, settings);
-        } catch (error) {
-          log.error('Could not process page observation', error);
+      return guarded('Content report', async () => {
+        if (report.type === 'DUE_PING') return due();
+        const { settings, session } = await load();
+        if (report.type === 'SUBMIT_REPORT') {
+          // Normally already applied from the direct answer; this matters after a worker restart.
+          if (tabId === session.tabId) await applyResult(session, report.key, report.result, settings);
+          return;
         }
+        await apply(session, { type: 'OBSERVATION', tabId, observation: report.observation, settings, now: deps.now() }, settings);
       });
     },
 
+    handleDue() {
+      return guarded('Due check', due);
+    },
+
     handleTabRemoved(tabId) {
-      return enqueue(async () => {
-        try {
-          const { settings, workflow } = await load();
-          await apply(workflow, { type: 'TAB_CLOSED', tabId, now: deps.now() }, settings);
-        } catch (error) {
-          log.error('Could not process closed tab', error);
-        }
+      return guarded('Closed tab', async () => {
+        const { settings, session } = await load();
+        await apply(session, { type: 'TAB_CLOSED', tabId, now: deps.now() }, settings);
       });
     },
 
     handleStartup() {
-      return enqueue(async () => {
-        try {
-          const { settings, workflow } = await load();
-          await apply(workflow, { type: 'BROWSER_STARTUP', now: deps.now() }, settings);
-        } catch (error) {
-          log.error('Could not restore state on startup', error);
-        }
+      return guarded('Browser startup', async () => {
+        const { settings, session } = await load();
+        await apply(session, { type: 'BROWSER_STARTUP', now: deps.now() }, settings);
+      });
+    },
+
+    handleWake() {
+      return guarded('Worker wake', async () => {
+        const { settings, session } = await load();
+        await apply(session, { type: 'WAKE', now: deps.now() }, settings);
       });
     },
   };
