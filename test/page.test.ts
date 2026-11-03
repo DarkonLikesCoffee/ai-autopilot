@@ -14,6 +14,25 @@ test('classification order: usage limit, generating, error, unknown, complete/id
   assert.equal(classify(signals()), 'idle');
 });
 
+test('the current ChatGPT in-progress turn attribute means generating', () => {
+  const root = fakeRoot({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': [{}],
+    '[data-talvt-turn-state="in_progress"]': [{}],
+  });
+  const observation = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(observation.status, 'generating');
+  assert.equal(observation.signals.streamingMarkerFound, true);
+});
+
+test('the Spanish stop control means generating', () => {
+  const root = fakeRoot({
+    '#prompt-textarea': [{}],
+    'button[aria-label="Detener"]': [{}],
+  });
+  assert.equal(observePage(root, CONVO, DEFAULT_SELECTORS).status, 'generating');
+});
+
 test('a visible stop control means generating', () => {
   const o = observePage(fakePage({ stop: true, assistantIds: ['m1'] }), CONVO, DEFAULT_SELECTORS);
   assert.equal(o.status, 'generating');
@@ -28,6 +47,19 @@ test('a hidden stop control is ignored', () => {
 test('any configured stop selector is recognized', () => {
   const root = fakeRoot({ '#prompt-textarea': [{}], 'button[aria-label="Stop streaming"]': [{}] });
   assert.equal(observePage(root, CONVO, DEFAULT_SELECTORS).status, 'generating');
+});
+
+test('recognizes the current conversation-role assistant and user message markup', () => {
+  const root = fakeRoot({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': [{}, {}, {}, {}, {}, {}],
+    '[data-user-message-bubble]': [{}, {}, {}],
+  });
+  const observation = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(observation.status, 'complete');
+  assert.equal(observation.signals.assistantMessageCount, 6);
+  assert.equal(observation.signals.userMessageCount, 3);
+  assert.equal(observation.responseKey, '/c/abc|n:6');
 });
 
 test('after generation the latest assistant message gives the response key', () => {

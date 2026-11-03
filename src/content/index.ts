@@ -41,8 +41,37 @@ function start(): void {
     });
   };
 
+  // Privacy-safe diagnostics: selector booleans/counts only, never message text.
+  let lastDiagnostic = '';
+  const readPage = () => {
+    const observation = observePage(document, location.href, DEFAULT_SELECTORS);
+    const markers = Array.from(document.querySelectorAll(
+      '[data-talvt-turn-state], [data-loading-indicator], [data-d-stream-word], [data-chatgpt-agent-turn-start]'
+    )).slice(-12).map((element) => ({
+      conversationRole: element.getAttribute('data-conversation-role'),
+      turnState: element.getAttribute('data-talvt-turn-state'),
+      loadingIndicator: element.getAttribute('data-loading-indicator'),
+      streamingWord: element.hasAttribute('data-d-stream-word'),
+      state: element.getAttribute('data-state'),
+      ariaBusy: element.getAttribute('aria-busy'),
+      testId: element.getAttribute('data-testid') ?? element.getAttribute('data-test-id'),
+    }));
+    const buttons = Array.from(document.querySelectorAll('button')).slice(-20).map((button) => ({
+      ariaLabel: button.getAttribute('aria-label'),
+      title: button.getAttribute('title'),
+      testId: button.getAttribute('data-testid') ?? button.getAttribute('data-test-id'),
+      disabled: button.disabled || button.getAttribute('aria-disabled') === 'true',
+    }));
+    const diagnostic = JSON.stringify({ status: observation.status, ...observation.signals, markers, buttons });
+    if (diagnostic !== lastDiagnostic) {
+      lastDiagnostic = diagnostic;
+      console.info('[ChatGPT Autopilot] Page detection', JSON.parse(diagnostic));
+    }
+    return observation;
+  };
+
   const detector = createDetector({
-    read: () => observePage(document, location.href, DEFAULT_SELECTORS),
+    read: readPage,
     emit: (observation) => send({ type: 'PAGE_OBSERVATION', observation }),
     timers: { setTimeout: (cb, ms) => window.setTimeout(cb, ms), clearTimeout: (h) => window.clearTimeout(h as number) },
   });
@@ -67,7 +96,7 @@ function start(): void {
     childList: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-testid', 'aria-label', 'aria-disabled', 'disabled', 'hidden', 'class', 'role'],
+    attributeFilter: ['data-testid', 'data-test-id', 'data-state', 'data-is-streaming', 'data-talvt-turn-state', 'data-loading-indicator', 'data-d-stream-word', 'data-conversation-role', 'data-user-message-bubble', 'aria-label', 'aria-disabled', 'aria-busy', 'disabled', 'hidden', 'class', 'role'],
   });
 
   // ChatGPT is a single-page app: conversation switches do not reload the page.
