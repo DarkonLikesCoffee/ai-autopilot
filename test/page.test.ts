@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, observePage, readSignals } from '../src/content/page.ts';
+import { classify, findMessages, messageId, observePage, readSignals, type ElementLike, type QueryRoot } from '../src/content/page.ts';
 import { DEFAULT_SELECTORS, type SelectorConfig } from '../src/content/selectors.ts';
 import { CONVO, fakePage, fakeRoot, signals } from './helpers/fixtures.ts';
 
@@ -149,4 +149,91 @@ test('a login screen or session-expired notice is an error, never a completion',
   const expired = observePage(fakeRoot({ [s.composer[0]!]: [{}], [s.assistantMessage[0]!]: [{}], [s.noticeRegion[0]!]: [{ text: 'Your session has expired. Please log in again.' }] }), 'https://chatgpt.com/c/a', s);
   assert.equal(expired.signals.authRequired, true);
   assert.equal(expired.status, 'error');
+});
+
+// --- Message lists with both the current and the older markup ---
+
+interface Node { attrs?: Record<string, string>; children?: Node[]; parentId?: string; visible?: boolean }
+
+function element(node: Node): ElementLike {
+  return {
+    textContent: 'never read',
+    getAttribute: (name) => node.attrs?.[name] ?? null,
+    closest: (selector) => (selector === '[data-message-id]' && node.parentId ? element({ attrs: { 'data-message-id': node.parentId } }) : null),
+    checkVisibility: () => node.visible !== false,
+    querySelectorAll: (selector) => (selector === '[data-message-id]' ? (node.children ?? []).filter((c) => c.attrs?.['data-message-id']).map(element) : []),
+  };
+}
+
+function rootOf(bySelector: Record<string, Node[]>): QueryRoot {
+  return { querySelectorAll: (selector) => (bySelector[selector] ?? []).map(element) };
+}
+
+test('nested current and older assistant markup is counted once, with the nested message id', () => {
+  const ids = ['m1', 'm2', 'm3'];
+  const root = rootOf({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': ids.map((id) => ({ children: [{ attrs: { 'data-message-id': id } }] })),
+    '[data-message-author-role="assistant"]': ids.map((id) => ({ attrs: { 'data-message-id': id } })),
+  });
+  const o = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(o.status, 'complete');
+  assert.equal(o.signals.assistantMessageCount, 3);
+  assert.equal(o.responseKey, '/c/abc|id:m3');
+});
+
+test('the latest assistant message is the last one in the page, not the last selector matched', () => {
+  // A new turn wrapper exists before its inner message rendered: the key must not
+  // point at the previous message through the older selector.
+  const root = rootOf({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': [{ children: [{ attrs: { 'data-message-id': 'm1' } }] }, {}],
+    '[data-message-author-role="assistant"]': [{ attrs: { 'data-message-id': 'm1' } }],
+  });
+  const o = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(o.signals.assistantMessageCount, 2);
+  assert.equal(o.responseKey, '/c/abc|n:2');
+});
+
+test('a message id on an enclosing element is used', () => {
+  const root = rootOf({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': [{ parentId: 'outer-7' }],
+  });
+  assert.equal(observePage(root, CONVO, DEFAULT_SELECTORS).responseKey, '/c/abc|id:outer-7');
+});
+
+test('nested current and older user markup is counted once', () => {
+  const root = rootOf({
+    '#prompt-textarea': [{}],
+    '[data-user-message-bubble]': [{}, {}],
+    '[data-conversation-role="user"]': [{}, {}],
+    '[data-message-author-role="user"]': [{}, {}],
+  });
+  assert.equal(observePage(root, CONVO, DEFAULT_SELECTORS).signals.userMessageCount, 2);
+});
+
+test('hidden matches of the first message selector fall back to the next selector', () => {
+  const root = rootOf({
+    '#prompt-textarea': [{}],
+    '[data-conversation-role="assistant"]': [{ visible: false }],
+    '[data-message-author-role="assistant"]': [{ attrs: { 'data-message-id': 'm9' } }],
+  });
+  const o = observePage(root, CONVO, DEFAULT_SELECTORS);
+  assert.equal(o.signals.assistantMessageCount, 1);
+  assert.equal(o.responseKey, '/c/abc|id:m9');
+});
+
+test('findMessages and messageId never guess', () => {
+  assert.deepEqual(findMessages(rootOf({}), DEFAULT_SELECTORS.assistantMessage), []);
+  assert.equal(messageId(undefined, 'data-message-id'), null);
+  assert.equal(messageId(element({}), 'data-message-id'), null);
+});
+
+test('the sent-message check still sees exactly one new user message with both markups present', () => {
+  const before = rootOf({ '#prompt-textarea': [{}], '[data-user-message-bubble]': [{}], '[data-message-author-role="user"]': [{}] });
+  const after = rootOf({ '#prompt-textarea': [{}], '[data-user-message-bubble]': [{}, {}], '[data-message-author-role="user"]': [{}, {}] });
+  const countBefore = observePage(before, CONVO, DEFAULT_SELECTORS).signals.userMessageCount;
+  const countAfter = observePage(after, CONVO, DEFAULT_SELECTORS).signals.userMessageCount;
+  assert.equal(countAfter - countBefore, 1);
 });

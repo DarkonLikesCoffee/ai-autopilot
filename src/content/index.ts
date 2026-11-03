@@ -5,6 +5,7 @@
 
 import { DEFAULT_SUBMIT_TIMING, submitContinuation, type SubmitResult } from './composer.ts';
 import { createDetector } from './detector.ts';
+import { collectDiagnostic, createDiagnosticLogger, diagnosticsEnabled } from './diagnostics.ts';
 import { observePage } from './page.ts';
 import { DEFAULT_SELECTORS } from './selectors.ts';
 import type { ContentCommand, ContentReport } from '../shared/messages.ts';
@@ -19,6 +20,14 @@ function extensionAlive(): boolean {
     return !!chrome.runtime?.id;
   } catch {
     return false;
+  }
+}
+
+function safeLocalStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
   }
 }
 
@@ -41,32 +50,11 @@ function start(): void {
     });
   };
 
-  // Privacy-safe diagnostics: selector booleans/counts only, never message text.
-  let lastDiagnostic = '';
+  // Opt-in, text-free detection diagnostics for live-site validation (see diagnostics.ts).
+  const logDiagnostic = createDiagnosticLogger((diagnostic) => console.info('[ChatGPT Autopilot] Page detection', diagnostic));
   const readPage = () => {
     const observation = observePage(document, location.href, DEFAULT_SELECTORS);
-    const markers = Array.from(document.querySelectorAll(
-      '[data-talvt-turn-state], [data-loading-indicator], [data-d-stream-word], [data-chatgpt-agent-turn-start]'
-    )).slice(-12).map((element) => ({
-      conversationRole: element.getAttribute('data-conversation-role'),
-      turnState: element.getAttribute('data-talvt-turn-state'),
-      loadingIndicator: element.getAttribute('data-loading-indicator'),
-      streamingWord: element.hasAttribute('data-d-stream-word'),
-      state: element.getAttribute('data-state'),
-      ariaBusy: element.getAttribute('aria-busy'),
-      testId: element.getAttribute('data-testid') ?? element.getAttribute('data-test-id'),
-    }));
-    const buttons = Array.from(document.querySelectorAll('button')).slice(-20).map((button) => ({
-      ariaLabel: button.getAttribute('aria-label'),
-      title: button.getAttribute('title'),
-      testId: button.getAttribute('data-testid') ?? button.getAttribute('data-test-id'),
-      disabled: button.disabled || button.getAttribute('aria-disabled') === 'true',
-    }));
-    const diagnostic = JSON.stringify({ status: observation.status, ...observation.signals, markers, buttons });
-    if (diagnostic !== lastDiagnostic) {
-      lastDiagnostic = diagnostic;
-      console.info('[ChatGPT Autopilot] Page detection', JSON.parse(diagnostic));
-    }
+    if (diagnosticsEnabled(safeLocalStorage())) logDiagnostic(collectDiagnostic(document, observation));
     return observation;
   };
 

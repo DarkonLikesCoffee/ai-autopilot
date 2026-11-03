@@ -81,7 +81,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 
 Choose the highest-priority task that remains valid after inspecting the current code, open PRs and CI. Update this list as tasks are completed or priorities change.
 
-- [ ] **T1 (P0): Live-site compatibility investigation.** Identify a safe, repeatable manual validation procedure for the current ChatGPT UI; document which selectors and states were actually verified. Do not claim success without a real run.
+- [ ] **T1 (P0): Live-site compatibility investigation.** Partly done (2026-11-03): the manual procedure is `docs/LIVE_VALIDATION.md`; opt-in text-free diagnostics exist; selectors from the owner's live observations (`data-conversation-role`, `data-user-message-bubble`, `data-talvt-turn-state="in_progress"`, Spanish stop label "Detener") are in `selectors.ts`. **Remaining:** a person must run the procedure on the real site and record results. [ASSUMED] the new selectors match the live site — they come from the owner's branch `fix/live-chatgpt-detection`; no run is recorded.
 - [ ] **T2 (P0): Completion-detection test coverage.** Audit detector edge cases (streaming pauses, regenerated responses, DOM replacement, conversation navigation and delayed UI updates); add deterministic tests for uncovered cases.
 - [ ] **T3 (P0): Submission safety audit.** Audit composer typing, send-button detection and sent-message confirmation for duplicate/lost-message race conditions; add tests for each discovered issue.
 - [ ] **T4 (P0): Hidden/background tab behavior.** Investigate timer throttling, tab visibility and discarded tabs; define and test a safe supported behavior.
@@ -108,6 +108,9 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 
 ## 9. Known limitations and risks
 
+- [UNRESOLVED] `[data-talvt-turn-state="in_progress"]` counts as generating. If ChatGPT ever leaves a stale in-progress marker after an error, Autopilot waits forever (safe direction: no send). Check during live validation.
+- [UNRESOLVED] Localized stop-button labels are matched one by one (only English variants and Spanish "Detener"); `data-testid="stop-button"` is the language-independent signal. Other UI languages are unverified.
+
 - [UNRESOLVED] Automated E2E tests use a fake ChatGPT page; they do not prove live-site compatibility.
 - [UNRESOLVED] ChatGPT can change DOM structure and selectors without notice.
 - [UNRESOLVED] Hidden/background tab throttling may affect typing, timers or sending.
@@ -131,12 +134,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | Date | Work | Outcome | Checks |
 |---|---|---|---|
 | 2026-11-03 | Established persistent Claude Code development context and roadmap. | [VERIFIED] Added `CLAUDE.md`, `AUTOPILOT.md` and `docs/ROADMAP.md` on a dedicated branch. | Documentation-only change; code checks not run. |
+| 2026-11-03 | T1 (partial): landed the owner's live-detection selectors (`fix/live-chatgpt-detection`, previously without a PR) with fixes. Message lists now use the first matching selector, so nested current + older markup is not double-counted and the latest message is taken in document order; the message id is also found on a nested/enclosing element. Diagnostics made opt-in (`localStorage` key `chatgpt-autopilot:debug`), text-free (button `title` dropped, values capped at 60 chars) and unit-tested. E2E fake page now renders nested current + older markup. Added `docs/LIVE_VALIDATION.md`. | [VERIFIED] in tests below. Live site: NOT RUN (no ChatGPT account in the cloud session). | `npm run check` PASS (typecheck, 74 unit tests, build); `npm run e2e` PASS (all 17 checks, Chromium, fake page). |
 
 ## 12. Exact next action
 
-- **Next task:** T1 — investigate live-site compatibility and define a safe validation procedure.
-- **Why:** The fake-page tests cannot establish that the core product works against the real ChatGPT UI.
-- **First step:** Inspect `src/content/selectors.ts`, `page.ts`, `detector.ts` and `composer.ts`; compare every assumed selector/state with current observable behavior, then document what can and cannot be validated in the cloud environment.
+- **Next task:** T1 — owner runs `docs/LIVE_VALIDATION.md` on the real ChatGPT site and records results in section 11 (blocked for cloud sessions: needs a logged-in browser). Meanwhile, cloud sessions continue with **T2** (detector edge-case tests: streaming pauses, regenerated responses, DOM replacement, navigation, delayed UI updates).
+- **Why:** Live compatibility can only be shown by a real run; T2 is the highest-priority task a cloud session can verify on its own.
+- **First step for T2:** Read `src/content/detector.ts` and `test/detector.test.ts`; list which of the edge cases above lack a deterministic test; add them.
 - **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol

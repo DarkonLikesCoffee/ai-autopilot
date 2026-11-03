@@ -1,6 +1,8 @@
 // Every assumption about ChatGPT's page structure lives here. When ChatGPT
 // changes its interface, this is the file to update. Each list is tried in
-// order; any match counts. If none of the composer selectors match, the page
+// order; for controls and markers any match counts. For message lists
+// (assistantMessage, userMessage) the first selector that matches anything
+// defines the list, so put the most specific current marker first. If none of the composer selectors match, the page
 // status is reported as "unknown" rather than guessed.
 
 export interface SelectorConfig {
@@ -12,9 +14,9 @@ export interface SelectorConfig {
   sendControl: string[];
   /** Markers that a response is still streaming. */
   streamingMarker: string[];
-  /** Rendered assistant messages. Only their count and id attribute are read, never their text. */
+  /** Rendered assistant messages; the first matching selector wins. Only their count and id attribute are read, never their text. */
   assistantMessage: string[];
-  /** Rendered user messages. Only counted, to confirm that a continuation was sent. */
+  /** Rendered user messages; the first matching selector wins. Only counted, to confirm that a continuation was sent. */
   userMessage: string[];
   /** Controls shown when ChatGPT wants you to log in. */
   loginControl: string[];

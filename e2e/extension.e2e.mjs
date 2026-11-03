@@ -61,16 +61,25 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
     if (!text) return;
     window.__messages.push(text);
     const thread = document.getElementById('thread');
-    const user = document.createElement('div');
-    user.setAttribute('data-message-author-role', 'user');
+    // Both the current markup (a turn wrapper with data-conversation-role) and the
+    // older one (data-message-author-role, carrying the id) nested inside it: each
+    // message must be counted once, and the id found on the nested element.
+    const turn = (role) => {
+      const wrapper = document.createElement('section');
+      wrapper.setAttribute('data-conversation-role', role);
+      const inner = document.createElement('div');
+      inner.setAttribute('data-message-author-role', role);
+      wrapper.append(inner);
+      thread.append(wrapper);
+      return inner;
+    };
+    const user = turn('user');
+    user.setAttribute('data-user-message-bubble', '');
     user.textContent = text;
-    thread.append(user);
     box.innerHTML = '';
     n += 1;
-    const answer = document.createElement('div');
-    answer.setAttribute('data-message-author-role', 'assistant');
+    const answer = turn('assistant');
     answer.setAttribute('data-message-id', 'msg-' + n);
-    thread.append(answer);
     generating = true;
     renderControls();
     let chunks = 0;
