@@ -58,9 +58,11 @@ const request: SubmitRequest = { text: PROMPT, expectedPath: '/c/abc', expectedK
 /** Runs a submission; `duringWait(poll)` may change the page while the prompt waits for the send button. */
 function run(p: ReturnType<typeof page>, duringWait?: (poll: number) => void, sendReadyMs = 300): Promise<SubmitResult> {
   let polls = 0;
+  let clock = 0;
   return submitContinuation(p.doc, () => p.state.url, DEFAULT_SELECTORS, request, {
-    sendReadyMs, confirmMs: 300, pollMs: 100,
-    sleep: async () => { polls += 1; duringWait?.(polls); },
+    sendReadyMs, confirmMs: 300, pollMs: 100, lateMarginMs: 2000,
+    sleep: async (ms) => { clock += ms; polls += 1; duringWait?.(polls); },
+    now: () => clock,
   });
 }
 
@@ -197,10 +199,12 @@ test('more user messages appearing while the prompt is still in the box is not t
 test('a send that clears the box a moment after the click is still confirmed', async () => {
   const p = page();
   let polls = 0;
+  let clock = 0;
   p.state.onClick = () => { p.state.clicks += 1; p.state.userMessages += 1; };
   const result = await submitContinuation(p.doc, () => p.state.url, DEFAULT_SELECTORS, request, {
-    sendReadyMs: 300, confirmMs: 1000, pollMs: 100,
-    sleep: async () => { polls += 1; if (polls === 3) p.state.composer!.value = ''; },
+    sendReadyMs: 300, confirmMs: 1000, pollMs: 100, lateMarginMs: 2000,
+    sleep: async (ms) => { clock += ms; polls += 1; if (polls === 3) p.state.composer!.value = ''; },
+    now: () => clock,
   });
   assert.equal(result.outcome, 'submitted');
   assert.equal(p.state.clicks, 1);
@@ -212,4 +216,58 @@ test('generation starting while the prompt is still in the box is not taken as s
   const result = await run(p);
   assert.notEqual(result.outcome, 'submitted');
   assert.equal(p.state.clicks, 1);
+});
+
+// --- Hidden, throttled or frozen tabs (T4) ---
+
+/** A clock where each sleep takes `sleepTakesMs` of wall time, as when Chrome throttles or freezes the tab. */
+function slowRun(p: ReturnType<typeof page>, sleepTakesMs: (poll: number) => number, confirmMs = 10_000): Promise<SubmitResult> {
+  let clock = 0;
+  let polls = 0;
+  return submitContinuation(p.doc, () => p.state.url, DEFAULT_SELECTORS, request, {
+    sendReadyMs: 3000, confirmMs, pollMs: 100, lateMarginMs: 2000,
+    sleep: async () => { polls += 1; clock += sleepTakesMs(polls); },
+    now: () => clock,
+  });
+}
+
+test('a tab frozen while the prompt waits for the send button never clicks after it wakes up', async () => {
+  const p = page();
+  p.state.sendUsable = false;
+  // Frozen for 15 s on the first wait; when it wakes, the button is ready.
+  const result = await slowRun(p, (poll) => { if (poll === 1) p.state.sendUsable = true; return poll === 1 ? 15_000 : 100; });
+  assert.equal(result.outcome, 'not_submitted');
+  assert.equal(result.outcome === 'not_submitted' && result.reason, 'tab_suspended');
+  assert.equal(p.state.clicks, 0, 'no late click');
+  assert.equal(p.state.composer!.value, '', 'the prompt is removed');
+});
+
+test('under heavy timer throttling the waits end by wall-clock time, not after a fixed number of polls', async () => {
+  const p = page();
+  p.state.sendUsable = false;
+  let sleeps = 0;
+  // Hidden-tab intensive throttling: each timer fires about a minute late.
+  const result = await slowRun(p, () => { sleeps += 1; return 60_000; });
+  assert.equal(sleeps, 1, 'one late timer is enough to stop, instead of 30 minute-long polls');
+  assert.equal(result.outcome, 'not_submitted');
+  assert.equal(p.state.clicks, 0);
+});
+
+test('the confirmation after the click ends by wall-clock time too', async () => {
+  const p = page();
+  p.state.onClick = () => { p.state.clicks += 1; };
+  let sleeps = 0;
+  const result = await slowRun(p, () => { sleeps += 1; return 60_000; });
+  assert.equal(p.state.clicks, 1);
+  assert.equal(sleeps, 1, 'not 100 polls of a minute each');
+  assert.equal(result.outcome, 'not_submitted');
+});
+
+test('your text typed while the frozen tab slept is kept when the late attempt is dropped', async () => {
+  const p = page();
+  p.state.sendUsable = false;
+  const result = await slowRun(p, (poll) => { if (poll === 1) p.state.composer!.value = PROMPT + ' plus mine'; return 15_000; });
+  assert.deepEqual(result, { outcome: 'refused', reason: 'composer_has_text' });
+  assert.equal(p.state.composer!.value, PROMPT + ' plus mine');
+  assert.equal(p.state.clicks, 0);
 });
