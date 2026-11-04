@@ -7,6 +7,7 @@ import type { SelectorConfig } from './selectors.ts';
 import { isVisible, observePage } from './page.ts';
 import type { PageSignals } from '../shared/types.ts';
 import type { PrecheckFailure } from '../shared/session.ts';
+import { collectSendDiagnostic, type InsertionInfo, type SendDiagnostic } from './sendDiagnostics.ts';
 
 export interface SubmitRequest {
   text: string;
@@ -41,6 +42,8 @@ export interface SubmitTiming {
   sleep(ms: number): Promise<void>;
   /** Wall-clock time. The waits are measured with it, not by counting polls, because timers in hidden tabs can run minutes late. */
   now(): number;
+  /** Opt-in: receives a text-free description of the send step at each stage (see sendDiagnostics.ts). */
+  diagnose?: (diagnostic: SendDiagnostic) => void;
 }
 
 export const DEFAULT_SUBMIT_TIMING: Omit<SubmitTiming, 'sleep' | 'now'> = { sendReadyMs: 3000, confirmMs: 10000, pollMs: 100, lateMarginMs: 2000 };
@@ -91,7 +94,7 @@ function selectAll(doc: Document, el: HTMLElement): void {
   selection.addRange(range);
 }
 
-function insertIntoEditable(doc: Document, el: HTMLElement, text: string): void {
+function insertIntoEditable(doc: Document, el: HTMLElement, text: string): InsertionInfo {
   selectAll(doc, el);
   // execCommand('insertText') goes through the editor's own input handling
   // (ProseMirror), which keeps its internal state consistent.
@@ -106,7 +109,9 @@ function insertIntoEditable(doc: Document, el: HTMLElement, text: string): void 
     const data = new DataTransfer();
     data.setData('text/plain', text);
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    return { method: 'paste_fallback', execCommandReturned: inserted };
   }
+  return { method: 'execCommand', execCommandReturned: inserted };
 }
 
 /**
@@ -225,12 +230,24 @@ export async function submitContinuation(
   }
 
   // 1. Type the prompt and verify it is exactly what the box contains.
+  let insertion: InsertionInfo;
   if (isTextArea(el)) {
     el.focus();
     setTextAreaValue(el, request.text);
+    insertion = { method: 'textarea', execCommandReturned: null };
   } else {
-    insertIntoEditable(doc, el, request.text);
+    insertion = insertIntoEditable(doc, el, request.text);
   }
+  const startedAt = timing.now();
+  const diagnose = (stage: string) => {
+    if (!timing.diagnose) return;
+    try {
+      timing.diagnose(collectSendDiagnostic(doc, selectors, findComposer(doc, selectors) ?? el, request.text, stage, timing.now() - startedAt, insertion));
+    } catch {
+      // Diagnostics never affect sending.
+    }
+  };
+  diagnose('typed');
   if (normalize(composerText(el)) !== normalize(request.text)) {
     clearComposer(doc, el);
     return { outcome: 'not_submitted', reason: 'insert_failed', detail: 'the prompt could not be typed into the message box reliably' };
@@ -259,15 +276,18 @@ export async function submitContinuation(
       button = candidate;
       break;
     }
+    diagnose('waiting_for_send_button');
     if (elapsed >= timing.sendReadyMs) break;
     await timing.sleep(timing.pollMs);
   }
   if (!button) {
+    diagnose('send_button_unavailable');
     if (!removePrompt(doc, el, request.text)) {
       return { outcome: 'refused', reason: 'composer_has_text' };
     }
     return { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the send button did not become available' };
   }
+  diagnose('clicking_send');
   const userCountBefore = observePage(doc, getUrl(), selectors).signals.userMessageCount;
   button.click();
 
@@ -281,6 +301,7 @@ export async function submitContinuation(
     if (timing.now() - clickedAt >= timing.confirmMs) break;
     await timing.sleep(timing.pollMs);
   }
+  diagnose('not_confirmed');
   const box = findComposer(doc, selectors);
   if (box && normalize(composerText(box)) === normalize(request.text)) {
     // The prompt is still sitting in the box: it was not sent. Remove it again.

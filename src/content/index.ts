@@ -5,7 +5,8 @@
 
 import { DEFAULT_SUBMIT_TIMING, submitContinuation, type SubmitResult } from './composer.ts';
 import { createDetector } from './detector.ts';
-import { collectDiagnostic, createDiagnosticLogger, diagnosticsEnabled } from './diagnostics.ts';
+import { collectDiagnostic, createChangeLogger, createDiagnosticLogger, diagnosticsEnabled } from './diagnostics.ts';
+import type { SendDiagnostic } from './sendDiagnostics.ts';
 import { observePage } from './page.ts';
 import { DEFAULT_SELECTORS } from './selectors.ts';
 import type { ContentCommand, ContentReport } from '../shared/messages.ts';
@@ -52,6 +53,11 @@ function start(): void {
 
   // Opt-in, text-free detection diagnostics for live-site validation (see diagnostics.ts).
   const logDiagnostic = createDiagnosticLogger((diagnostic) => console.info('[ChatGPT Autopilot] Page detection', diagnostic));
+  // Send-step diagnostics: logged when what the send step sees changes (not every poll).
+  const logSendDiagnostic = createChangeLogger<SendDiagnostic>(
+    (diagnostic) => console.info(`[ChatGPT Autopilot] Send step: ${diagnostic.stage}`, diagnostic),
+    (diagnostic) => JSON.stringify({ ...diagnostic, elapsedMs: 0 }),
+  );
   const readPage = () => {
     const observation = observePage(document, location.href, DEFAULT_SELECTORS);
     if (diagnosticsEnabled(safeLocalStorage())) logDiagnostic(collectDiagnostic(document, observation));
@@ -102,6 +108,7 @@ function start(): void {
         ...DEFAULT_SUBMIT_TIMING,
         sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
         now: () => Date.now(),
+        diagnose: diagnosticsEnabled(safeLocalStorage()) ? logSendDiagnostic : undefined,
       });
       if (result.outcome !== 'refused') sentFor.add(key);
       return result;

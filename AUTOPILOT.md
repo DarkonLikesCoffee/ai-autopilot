@@ -108,6 +108,8 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 
 ## 9. Known limitations and risks
 
+- [UNRESOLVED] **Live-site bug (owner report, 2026-11-04):** on the real ChatGPT site the prompt is visibly inserted, then the run stops with "the send button did not become available" (log: Sending 13:14:19 → Error 13:14:23, i.e. the full 3 s wait). Root cause **not yet established**. Evidence so far: (1) the failure is `send_unavailable`, so the exact-text check after typing passed and for 3 s no visible element matching `sendControl` was usable; (2) with a **real ProseMirror** editor in Chromium whose Send button exists only while ProseMirror's own document has text, the extension's insertion (`execCommand('insertText')`) updates the editor state and both the one-line and the multi-paragraph default prompt are sent exactly — so "execCommand does not reach ProseMirror" does not hold for a standard ProseMirror editor (scratch experiment, not committed). Remaining hypotheses, to be decided by live diagnostics: (a) `sendControl` selectors no longer match ChatGPT's Send button (renamed testid/id, or a localized aria-label); (b) ChatGPT's own state does not count the inserted text, so Send stays disabled or is replaced by a voice button; (c) the first visible match is a different, disabled button. Increasing the timeout or adding selectors without that evidence was rejected.
+
 - [UNRESOLVED] `[data-talvt-turn-state="in_progress"]` counts as generating. If ChatGPT ever leaves a stale in-progress marker after an error, Autopilot waits forever (safe direction: no send). Check during live validation.
 - [UNRESOLVED] Localized stop-button labels are matched one by one (only English variants and Spanish "Detener"); `data-testid="stop-button"` is the language-independent signal. Other UI languages are unverified.
 
@@ -145,13 +147,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-04 | T4 (part 1): send-step waits bounded by wall-clock time; no click after a suspended/throttled wait (`tab_suspended`). 4 new tests (3 fail on the old code). A first frozen-tab experiment seemed to show the reply channel closing on freeze; re-running without freezing showed that was an artifact of the test page (a form submit navigated away). Recorded so it is not repeated. | [VERIFIED] in unit tests; browser freezing NOT reproducible headless. | `npm run check` PASS (102 unit tests); `npm run e2e` PASS. |
 | 2026-11-04 | T5: activity log now records when a generation is first observed; test pins the order of all stages in a full cycle. | [VERIFIED] in tests below. | `npm run check` PASS (104 unit tests); `npm run e2e` PASS. |
 | 2026-11-04 | T6: overdue-result check after a worker restart during an attempt; schema-version test. 3 new tests (1 fails on the old code). | [VERIFIED] in tests below. | `npm run check` PASS (107 unit tests); `npm run e2e` PASS. |
+| 2026-11-04 | Live-site send failure investigation: opt-in, text-free send-step diagnostics (`src/content/sendDiagnostics.ts`: send-selector matches with visibility/disabled/attributes, the button that would be chosen, buttons next to the message box, message-box state incl. ProseMirror placeholder and ChatGPT's hidden textarea, insertion method); console probe `docs/send-probe.js` for a hand-typed baseline; capture procedure in `docs/LIVE_VALIDATION.md`. Real-ProseMirror experiment rules out the generic editor-state hypothesis. No behavior change. | Root cause [UNRESOLVED] pending owner's capture. | `npm run check` PASS (113 unit tests); `npm run e2e` PASS incl. a new check that the diagnostics describe a failed send without the prompt. |
 
 ## 12. Exact next action
 
-- **Status:** Every task in the queue that a cloud session can verify on its own is done (T2, T3, T5, T6) or done as far as possible without a real browser and account (T1, T4). The remaining M1 exit criteria need evidence from the live site.
-- **Next task (owner, blocking M1):** run `docs/LIVE_VALIDATION.md` in a logged-in Chrome (D1–D6, S1–S6) and record the results in section 11. Failures there become the next cloud tasks (selector or detection fixes with tests).
-- **Not started on purpose:** T7 (structured stop protocol) is explicitly deferred until M1 reliability is established; T8/T9 depend on M1/M2.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for live-site evidence from the owner.
+- **Next task (owner, blocking):** capture A and B from `docs/LIVE_VALIDATION.md` → "When a continuation cannot be sent" in the logged-in ChatGPT tab and add both JSON blobs to section 11.
+- **Then (cloud):** read the table in that section to pick the root cause; fix only that (selector from B's attributes, a different insertion method, or choosing the usable match), with a regression test built from the captured structure; keep every safety check (exact prompt in the box, prechecks, never delete your text).
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for live diagnostics.
 
 ## 13. Update protocol
 

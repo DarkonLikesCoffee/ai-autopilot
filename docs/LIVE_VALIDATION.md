@@ -58,6 +58,38 @@ Turn diagnostics off afterwards:
 localStorage.removeItem('chatgpt-autopilot:debug')
 ```
 
+## When a continuation cannot be sent ("the send button did not become available")
+
+Capture two things from the same ChatGPT tab and paste both into an issue or
+the AUTOPILOT.md history. Neither contains message text, the prompt, the
+message-box text or any button text.
+
+**A. The extension's own record of the failing attempt**
+
+1. In the ChatGPT tab's DevTools console:
+   `localStorage.setItem('chatgpt-autopilot:debug', '1')`, then reload the tab.
+2. Start Autopilot and let it fail as before.
+3. In the console, filter for `Send step`. You should see `typed`,
+   `waiting_for_send_button` (once per change) and `send_button_unavailable`.
+4. Right-click the `send_button_unavailable` entry's object → **Copy object**
+   (and the `typed` one).
+
+**B. A baseline: what Send looks like when you type yourself**
+
+1. Click into the empty message box and type a single word by hand. Do not send it.
+2. Paste the contents of [`docs/send-probe.js`](send-probe.js) into the console
+   and press Enter. Copy the JSON it returns.
+3. Delete your word again.
+
+How to read them:
+
+| A shows | B shows | Meaning |
+|---|---|---|
+| `sendSelectors` all empty; `nearbyButtons` has no send-like button | a button that no `sendSelectors` entry matches | Selectors are outdated: B's attributes give the new selector |
+| `chosen.usable: false` (or only a voice/dictation button), `composer.holdsPrompt: true` | a usable button matched by a selector | ChatGPT did not register the inserted text (editor state); see `insertion` and `hiddenTextarea` |
+| `chosen` is a hidden or different button while another match is usable | — | The first-visible-match rule picks the wrong button |
+| a usable button only late (`elapsedMs` > 3000) | — | The 3 s wait is too short |
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when
