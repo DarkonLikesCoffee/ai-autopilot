@@ -643,3 +643,51 @@ test('a generation observed while the continuation is pending is logged as a can
   assert.equal(messages.filter((m) => m === 'ChatGPT is generating a response.').length, 1);
   assert.equal(messages.at(-1), 'ChatGPT started generating again; the pending continuation was cancelled.');
 });
+
+// --- T6: recovery after the worker restarts during an attempt ---
+
+test('a worker restart during an attempt, with no result ever arriving, does not leave the session sending forever', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  const stored = structuredClone(h.storage.data[SESSION_KEY]) as SessionState;
+  h.storage.data[SESSION_KEY] = { ...stored, phase: 'submitting', submitStartedAt: h.clock.now, answeredKeys: [key('m1')], dueAt: null };
+  // The worker wakes shortly after; the tab's report never comes (tab crashed or discarded).
+  h.clock.now += 5_000;
+  h.restartWorker();
+  await h.controller.handleWake();
+  assert.equal((await h.session()).phase, 'submitting', 'still waiting for the result for now');
+  const wakeAt = h.scheduled.at(-1);
+  assert.ok(wakeAt !== undefined && wakeAt > h.clock.now, 'a check is scheduled for when the result is overdue');
+  h.clock.now = wakeAt!;
+  await h.controller.handleDue();
+  const s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'submission_uncertain');
+  assert.equal(h.submits.length, 0, 'never resent');
+  // Resuming does not answer that response again.
+  ok(await h.ui('RESUME'));
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 0);
+});
+
+test('a result that arrives after the worker restarted during the attempt is still applied', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  const stored = structuredClone(h.storage.data[SESSION_KEY]) as SessionState;
+  h.storage.data[SESSION_KEY] = { ...stored, phase: 'submitting', submitStartedAt: h.clock.now, answeredKeys: [key('m1')], dueAt: null };
+  h.clock.now += 5_000;
+  h.restartWorker();
+  await h.controller.handleWake();
+  await h.controller.handleContent(TAB, { type: 'SUBMIT_REPORT', key: key('m1'), result: { outcome: 'submitted', sawGenerating: true } });
+  let s = await h.session();
+  assert.equal(s.run, 'running');
+  assert.equal(s.cycles, 1);
+  // The overdue check that was scheduled earlier then finds nothing to do.
+  h.clock.now += 120_000;
+  await h.controller.handleDue();
+  s = await h.session();
+  assert.equal(s.run, 'running');
+  assert.equal(s.phase, 'watching');
+});

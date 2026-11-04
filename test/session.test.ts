@@ -82,3 +82,12 @@ test('the activity log and answered keys stay bounded', () => {
   assert.equal(s.answeredKeys.length, 200);
   assert.equal(s.log.length, 40);
 });
+
+test('state from another schema version (an extension update) is never resumed, but answered responses are kept', () => {
+  for (const schemaVersion of [1, 3, undefined, '2']) {
+    const restored = normalizeSession({ ...inDelay(), schemaVersion, answeredKeys: ['/c/abc|id:m0', 7] });
+    assert.equal(restored.run, 'stopped', `schemaVersion ${String(schemaVersion)}`);
+    assert.equal(restored.pendingKey, null);
+    assert.deepEqual(restored.answeredKeys, ['/c/abc|id:m0'], 'answered responses are never answered again');
+  }
+});
