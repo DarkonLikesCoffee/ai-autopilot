@@ -260,6 +260,11 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       return observe(state, event);
 
     case 'DUE':
+      if (state.run === 'running' && state.phase === 'submitting' && state.submitStartedAt !== null && now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
+        // Scheduled by WAKE: the attempt's result never arrived. Its response stays
+        // answered; a result that still arrives is applied (as after any pause).
+        return halt(state, 'paused', 'submission_uncertain', now, 'no result was received for the last attempt');
+      }
       if (state.run !== 'running' || state.phase !== 'delay' || state.pendingKey === null || state.dueAt === null) return { state, effects: [] };
       if (now < state.dueAt - DUE_TOLERANCE_MS) return { state, effects: [] };
       return { state, effects: [{ type: 'attempt', key: state.pendingKey }] };
@@ -401,8 +406,12 @@ export function transition(state: SessionState, event: SessionEvent): Transition
     case 'WAKE': {
       // The service worker restarted: timers are gone, but the persisted state remains.
       if (state.run !== 'running') return { state, effects: [] };
-      if (state.phase === 'submitting' && state.submitStartedAt !== null && now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
-        return halt(state, 'paused', 'submission_uncertain', now, 'no result was received for the last attempt');
+      if (state.phase === 'submitting' && state.submitStartedAt !== null) {
+        if (now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
+          return halt(state, 'paused', 'submission_uncertain', now, 'no result was received for the last attempt');
+        }
+        // The page reports the result on its own; if it never does, check again once it is overdue.
+        return { state, effects: [{ type: 'schedule', dueAt: state.submitStartedAt + SUBMIT_TIMEOUT_MS + 1000 }] };
       }
       if (state.phase === 'delay' && state.dueAt !== null) {
         if (now >= state.dueAt - DUE_TOLERANCE_MS && state.pendingKey !== null) return { state, effects: [{ type: 'attempt', key: state.pendingKey }] };
