@@ -100,6 +100,17 @@ function insertIntoEditable(doc: Document, el: HTMLElement, text: string): void 
   }
 }
 
+/**
+ * Removes the prompt this module typed, but only while the box still holds
+ * exactly that prompt: if you typed anything meanwhile, the box is left alone.
+ * Returns whether the box holds the prompt no more.
+ */
+function removePrompt(doc: Document, el: HTMLElement, text: string): boolean {
+  if (normalize(composerText(el)) !== normalize(text)) return false;
+  clearComposer(doc, el);
+  return normalize(composerText(el)) === '';
+}
+
 /** Removes text this module typed (only ever called when the box was empty before). */
 function clearComposer(doc: Document, el: HTMLElement): void {
   if (isTextArea(el)) {
@@ -146,6 +157,46 @@ export function precheck(doc: Document, url: string, selectors: SelectorConfig, 
   return null;
 }
 
+/**
+ * While the prompt sits in the box waiting for the send button, anything that
+ * changes the page ends the attempt without a click. The prompt is removed
+ * only if the box still holds exactly the prompt; your text is never touched.
+ */
+function pageChangedWhileWaiting(doc: Document, url: string, selectors: SelectorConfig, request: SubmitRequest, typedInto: HTMLElement): SubmitResult | null {
+  const box = findComposer(doc, selectors);
+  const path = (() => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return '';
+    }
+  })();
+  const vanished: SubmitResult = { outcome: 'uncertain', detail: 'the prompt left the message box before Autopilot clicked send' };
+  if (!box) return vanished;
+  if (box !== typedInto) {
+    // The box was re-rendered. If the prompt moved over, take it out: nothing was
+    // sent. If the new box is empty, the prompt may have been sent (Enter): unknown.
+    // Any other text is yours and stays.
+    if (removePrompt(doc, box, request.text)) return { outcome: 'refused', reason: 'not_complete' };
+    return normalize(composerText(box)) === '' ? vanished : { outcome: 'refused', reason: 'composer_has_text' };
+  }
+  const now = normalize(composerText(typedInto));
+  if (now !== normalize(request.text)) {
+    // Emptied: perhaps sent with Enter, so it is not retried. Changed: you typed,
+    // and the box is left exactly as it is.
+    return now === '' ? vanished : { outcome: 'refused', reason: 'composer_has_text' };
+  }
+  if (path !== request.expectedPath) {
+    return removePrompt(doc, typedInto, request.text) ? { outcome: 'refused', reason: 'conversation_changed' } : { outcome: 'refused', reason: 'composer_has_text' };
+  }
+  const observation = observePage(doc, url, selectors);
+  if (observation.status === 'generating' || observation.status === 'usage_limit') {
+    if (!removePrompt(doc, typedInto, request.text)) return { outcome: 'refused', reason: 'composer_has_text' };
+    return { outcome: 'refused', reason: observation.status === 'usage_limit' ? 'usage_limit' : 'generating' };
+  }
+  return null;
+}
+
 export async function submitContinuation(
   doc: Document,
   getUrl: () => string,
@@ -174,18 +225,25 @@ export async function submitContinuation(
     return { outcome: 'not_submitted', reason: 'insert_failed', detail: 'the prompt could not be typed into the message box reliably' };
   }
 
-  // 2. Wait for the send button to become usable, then click it once.
+  // 2. Wait for the send button to become usable, then click it once. Before
+  // every look, and right before the click, the page must still be as checked:
+  // same conversation, not generating, and the box holding exactly the prompt.
   let button: HTMLElement | null = null;
-  for (let waited = 0; waited <= timing.sendReadyMs; waited += timing.pollMs) {
+  for (let waited = 0; ; waited += timing.pollMs) {
+    const changed = pageChangedWhileWaiting(doc, getUrl(), selectors, request, el);
+    if (changed) return changed;
     const candidate = findFirstVisible(doc, selectors.sendControl);
     if (candidate && isUsable(candidate)) {
       button = candidate;
       break;
     }
+    if (waited >= timing.sendReadyMs) break;
     await timing.sleep(timing.pollMs);
   }
   if (!button) {
-    clearComposer(doc, el);
+    if (!removePrompt(doc, el, request.text)) {
+      return { outcome: 'refused', reason: 'composer_has_text' };
+    }
     return { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the send button did not become available' };
   }
   const userCountBefore = observePage(doc, getUrl(), selectors).signals.userMessageCount;
@@ -200,7 +258,7 @@ export async function submitContinuation(
   const box = findComposer(doc, selectors);
   if (box && normalize(composerText(box)) === normalize(request.text)) {
     // The prompt is still sitting in the box: it was not sent. Remove it again.
-    clearComposer(doc, box);
+    removePrompt(doc, box, request.text);
     return { outcome: 'not_submitted', reason: 'not_sent', detail: 'clicking send did not send the message' };
   }
   return { outcome: 'uncertain', detail: 'the message box was emptied but no sent message or response appeared' };
