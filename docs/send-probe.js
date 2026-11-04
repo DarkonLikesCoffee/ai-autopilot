@@ -2,7 +2,7 @@
 // ChatGPT tab. Prints structure only: no message text, no message-box text, no
 // button text. Same fields as the extension's "Send step" diagnostics.
 (() => {
-  const SEND = ['button[data-testid="send-button"]', '#composer-submit-button', 'button[aria-label="Send prompt"]', 'button[aria-label="Send message"]'];
+  const SEND = ['button[data-testid="send-button"]', '#composer-submit-button', 'button[aria-label="Send prompt"]', 'button[aria-label="Send message"]', 'button[aria-label="Enviar"]'];
   const COMPOSER = ['#prompt-textarea', 'textarea[name="prompt-textarea"]', 'form [contenteditable="true"][role="textbox"]', 'form textarea'];
   const ATTRS = ['data-testid', 'id', 'aria-label', 'aria-disabled', 'type', 'data-state'];
   const visible = (el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : true);

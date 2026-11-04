@@ -10,7 +10,11 @@ export interface SelectorConfig {
   composer: string[];
   /** The control that stops a response while it is generating. */
   stopControl: string[];
-  /** The send control. Clicked only to send the continuation, after its text was verified. */
+  /**
+   * The send control. Clicked only to send the continuation, after its text was
+   * verified. A match inside the message box's own form is preferred over one
+   * elsewhere on the page (see findSendButton).
+   */
   sendControl: string[];
   /** Markers that a response is still streaming. */
   streamingMarker: string[];
@@ -28,6 +32,25 @@ export interface SelectorConfig {
   messageContainer: string;
 }
 
+/**
+ * Localized button labels, by ChatGPT interface language. ChatGPT does not
+ * always give its buttons a language-independent attribute (an es-ES page was
+ * seen with only <button aria-label="Enviar" type="submit">), so the visible
+ * label is sometimes the only way to recognize them.
+ *
+ * Add a language only from a live observation: run docs/send-probe.js in a
+ * ChatGPT tab in that language (see docs/LIVE_VALIDATION.md) and copy the
+ * button's aria-label exactly. Do not translate labels by guesswork: a wrong
+ * label matches nothing, a too-generic one could match the wrong button.
+ */
+export const LOCALIZED_LABELS: Record<string, { send: string[]; stop: string[]; source: string }> = {
+  en: { send: ['Send prompt', 'Send message'], stop: ['Stop streaming', 'Stop generating', 'Stop answering'], source: 'original selectors' },
+  es: { send: ['Enviar'], stop: ['Detener'], source: 'owner live diagnostics, es-ES, 2026-11-04' },
+};
+
+const labelSelectors = (kind: 'send' | 'stop') =>
+  Object.values(LOCALIZED_LABELS).flatMap((entry) => entry[kind].map((label) => `button[aria-label="${label}"]`));
+
 export const DEFAULT_SELECTORS: SelectorConfig = {
   composer: [
     '#prompt-textarea',
@@ -35,19 +58,9 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'form [contenteditable="true"][role="textbox"]',
     'form textarea',
   ],
-  stopControl: [
-    'button[data-testid="stop-button"]',
-    'button[aria-label="Stop streaming"]',
-    'button[aria-label="Stop generating"]',
-    'button[aria-label="Stop answering"]',
-    'button[aria-label="Detener"]',
-  ],
-  sendControl: [
-    'button[data-testid="send-button"]',
-    '#composer-submit-button',
-    'button[aria-label="Send prompt"]',
-    'button[aria-label="Send message"]',
-  ],
+  // Language-independent attributes first, then the localized labels.
+  stopControl: ['button[data-testid="stop-button"]', ...labelSelectors('stop')],
+  sendControl: ['button[data-testid="send-button"]', '#composer-submit-button', ...labelSelectors('send')],
   streamingMarker: ['[data-talvt-turn-state="in_progress"]', '.result-streaming', '[data-testid="streaming-indicator"]'],
   assistantMessage: ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
   userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],

@@ -7,6 +7,7 @@ import type { SelectorConfig } from './selectors.ts';
 import { isVisible, observePage } from './page.ts';
 import type { PageSignals } from '../shared/types.ts';
 import type { PrecheckFailure } from '../shared/session.ts';
+import { findSendButton } from './sendButton.ts';
 import { collectSendDiagnostic, type InsertionInfo, type SendDiagnostic } from './sendDiagnostics.ts';
 
 export interface SubmitRequest {
@@ -271,7 +272,7 @@ export async function submitContinuation(
     }
     const changed = pageChangedWhileWaiting(doc, getUrl(), selectors, request, el);
     if (changed) return changed;
-    const candidate = findFirstVisible(doc, selectors.sendControl);
+    const candidate = findSendButton(doc, selectors.sendControl, el)?.element ?? null;
     if (candidate && isUsable(candidate)) {
       button = candidate;
       break;

@@ -6,7 +6,7 @@ import { DEFAULT_SELECTORS } from '../src/content/selectors.ts';
 const PROMPT = 'SECRET-PROMPT continue working';
 
 interface Spec { tag: string; attrs?: Record<string, string>; disabled?: boolean; visible?: boolean; text?: string; value?: string; classes?: string[]; children?: FakeEl[] }
-interface FakeEl { tagName: string; disabled?: boolean; value?: string; innerText: string; textContent: string; classList: { contains(c: string): boolean }; getAttribute(n: string): string | null; checkVisibility(): boolean; closest(sel: string): FakeEl | null; querySelectorAll(sel: string): FakeEl[]; parentElement: FakeEl | null }
+interface FakeEl { contains?(other: unknown): boolean; tagName: string; disabled?: boolean; value?: string; innerText: string; textContent: string; classList: { contains(c: string): boolean }; getAttribute(n: string): string | null; checkVisibility(): boolean; closest(sel: string): FakeEl | null; querySelectorAll(sel: string): FakeEl[]; parentElement: FakeEl | null }
 
 function el(spec: Spec): FakeEl {
   const node: FakeEl = {
@@ -31,6 +31,7 @@ function setup(opts: { sendDisabled: boolean; extraHiddenSend?: boolean; hiddenT
   const stale = el({ tag: 'button', attrs: { 'data-testid': 'send-button' }, disabled: true, visible: false });
   const composer = el({ tag: 'div', attrs: { id: 'prompt-textarea', contenteditable: 'true' }, classes: ['ProseMirror'], text: PROMPT, children: [el({ tag: 'p', text: PROMPT })] });
   const form = el({ tag: 'form', children: [send, speech] });
+  form.contains = (other) => other === send || other === speech || other === composer;
   composer.closest = (sel) => (sel === 'form' ? form : null);
   const hidden = opts.hiddenTextareaValue === undefined ? [] : [el({ tag: 'textarea', value: opts.hiddenTextareaValue, attrs: { name: 'prompt-textarea' } })];
   const doc = {
@@ -59,7 +60,7 @@ test('it shows what each send selector matches, which button would be used, and 
   assert.equal(first.selector, 'button[data-testid="send-button"]');
   assert.equal(first.total, 2);
   assert.deepEqual(first.matches.map((m) => [m.visible, m.disabled]), [[false, true], [true, true]]);
-  assert.deepEqual(d.chosen, { selector: 'button[data-testid="send-button"]', index: 1, usable: false });
+  assert.deepEqual(d.chosen, { selector: 'button[data-testid="send-button"]', index: 1, usable: false, inComposerForm: true });
   assert.equal(d.sendSelectors[2]!.total, 0, 'aria-label selectors that match nothing are shown as such');
   assert.deepEqual(d.nearbyButtons.map((b) => b.attributes['data-testid']), ['send-button', 'composer-speech-button']);
   assert.equal(d.nearbyButtons[1]!.attributes['aria-label'], 'Start voice mode');
@@ -74,7 +75,7 @@ test('it describes the message box and whether the page\'s hidden textarea saw t
   assert.equal(a.composer!.focused, true);
   assert.equal(a.composer!.paragraphs, 1);
   assert.deepEqual(a.composer!.hiddenTextarea, { found: true, valueLength: PROMPT.length, holdsPrompt: true });
-  assert.deepEqual(a.chosen, { selector: 'button[data-testid="send-button"]', index: 0, usable: true });
+  assert.deepEqual(a.chosen, { selector: 'button[data-testid="send-button"]', index: 0, usable: true, inComposerForm: true });
 
   const stale = setup({ sendDisabled: true, hiddenTextareaValue: '' });
   const b = collectSendDiagnostic(stale.doc, DEFAULT_SELECTORS, stale.composer, PROMPT, 'typed', 0, null);

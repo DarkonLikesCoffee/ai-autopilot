@@ -299,7 +299,9 @@ test('with diagnostics on, a send button that never becomes usable is described 
   const last = seen.at(-1)!;
   assert.equal(last.insertion?.method, 'textarea');
   assert.equal(last.composer?.holdsPrompt, true, 'described before the prompt is removed');
-  assert.deepEqual(last.chosen, { selector: DEFAULT_SELECTORS.sendControl[0], index: 0, usable: false });
+  assert.equal(last.chosen?.selector, DEFAULT_SELECTORS.sendControl[0]);
+  assert.equal(last.chosen?.usable, false);
+  assert.equal(last.chosen?.inComposerForm, false, 'the fake textarea is not in a form');
   assert.ok(!JSON.stringify(seen).includes(PROMPT));
 });
 

@@ -32,11 +32,15 @@ const check = (name, ok, detail = '') => {
 const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fake ChatGPT</title></head><body>
 <main id="thread"></main>
 <div id="notices"></div>
-<form id="composer-form" onsubmit="return false">
+<form id="composer-form" onsubmit="if (window.__spanish) window.__send(); return false">
   <div id="prompt-textarea" contenteditable="true" role="textbox" style="min-height:40px;border:1px solid #ccc"></div>
   <span id="controls"></span>
 </form>
 <script>
+  // ?lang=es mimics the live es-ES page: the only send control is
+  // <button aria-label="Enviar" type="submit"> (no data-testid), the stop control "Detener".
+  window.__spanish = new URLSearchParams(location.search).get('lang') === 'es';
+  if (window.__spanish) document.documentElement.lang = 'es-ES';
   window.__messages = [];      // every message the page received, in order
   window.__sendBroken = false; // when true, clicking send does nothing (a broken UI)
   let n = 0;
@@ -44,6 +48,12 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
   const controls = document.getElementById('controls');
   let generating = false;
   function renderControls() {
+    if (window.__spanish) {
+      controls.innerHTML = generating
+        ? '<button type="button" aria-label="Detener">Detener</button>'
+        : '<button type="submit" aria-label="Enviar"' + (!box.innerText.trim() ? ' disabled' : '') + '>Enviar</button>';
+      return;
+    }
     if (generating) {
       controls.innerHTML = '<button type="button" data-testid="stop-button" aria-label="Stop streaming">Stop</button>';
     } else {
@@ -154,7 +164,7 @@ try {
   async function openConversation(path) {
     const page = await context.newPage();
     await page.goto(`https://chatgpt.com${path}`);
-    await page.waitForSelector('[data-testid="send-button"]');
+    await page.waitForSelector('[data-testid="send-button"], button[aria-label="Enviar"]');
     await page.bringToFront();
     await sleep(300); // content script attached
     return page;
@@ -257,6 +267,19 @@ try {
   await waitFor('navigation safeguard', async () => (await session()).reason === 'conversation_changed');
   await sleep(1500);
   check('14: navigating away prevents the continuation', (await messages(navChat)).length === 1);
+  await stop();
+
+  // ---- Live es-ES structure: the only send control is aria-label="Enviar" type="submit" ----
+  const esChat = await openConversation('/c/e2e-es?lang=es');
+  await start(esChat);
+  await esChat.evaluate((t) => window.__typeDraft(t), 'Hola');
+  await esChat.click('button[aria-label="Enviar"]');
+  await waitFor('Spanish continuation', async () => (await messages(esChat)).length >= 2, 30000);
+  await sleep(1500);
+  const esMessages = await messages(esChat);
+  check('es-ES: the "Enviar" submit button sends the continuation, exactly once per response',
+    esMessages[1] === PROMPT && (await session()).cycles >= 1 && esMessages.filter((m) => m === PROMPT).length === (await session()).cycles,
+    JSON.stringify(esMessages.map((m) => m.slice(0, 12))));
   await stop();
 
   // ---- 12: usage limit stops automatic continuation ----
