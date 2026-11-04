@@ -78,7 +78,10 @@ One meaningful unit of work per task is preferred. If the cloud session is expli
 - Use focused PRs with a clear summary, test evidence and known limitations.
 - Prefer squash merging to keep history readable.
 - The owner's intended workflow is automatic PR merging after required CI checks pass, without manual approval.
-- Never merge or enable auto-merge for a PR whose required checks have not passed.
+- Enabling auto-merge (squash) while required checks are still pending is allowed and preferred: GitHub merges only after every required check passes. Do not wait for CI to finish before enabling it.
+- Never merge directly (without auto-merge) a PR whose required checks have not passed, and never enable auto-merge on a PR whose required checks have already failed; fix the failure first.
+- Before enabling auto-merge, review your complete diff and run `npm run check` (and `npm run e2e` when relevant) locally.
+- After a merge, verify the PR shows as merged and that `main` contains the changes.
 - Never bypass failing or missing checks to make a PR merge.
 - If GitHub auto-merge is unavailable or branch protection is not configured, report the exact blocker. Do not weaken repository protections or silently merge around them.
 - If a PR is not ready, leave it open and explain why.
