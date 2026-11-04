@@ -88,6 +88,7 @@ stop over guessing:
 | ChatGPT starts generating during the delay (for example you sent something) | The pending continuation is cancelled |
 | The finished response is updated on the page during the delay (a new message id, a re-render) without a new generation | The one pending continuation moves to the updated response, with a fresh delay; an already answered response is never targeted |
 | The message box contains text (you are typing) | Paused; your text is never touched |
+| You type, switch conversation, or ChatGPT starts generating while the prompt waits for the Send button | Send is not clicked; the prompt is removed only if the box holds exactly the prompt; your text stays |
 | The tab switches to another conversation | Paused; nothing is sent anywhere else |
 | Usage limit, login prompt or an error notice | Stopped with an error; never retried automatically |
 | The prompt cannot be typed, Send never becomes available, or the click does not send | Error; the prompt is removed from the box again; not retried |
