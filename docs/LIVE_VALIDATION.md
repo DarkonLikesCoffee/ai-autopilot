@@ -90,6 +90,17 @@ How to read them:
 | `chosen` is a hidden or different button while another match is usable | — | The first-visible-match rule picks the wrong button |
 | a usable button only late (`elapsedMs` > 3000) | — | The 3 s wait is too short |
 
+### Adding a language
+
+If B shows a send (or stop) button whose only identifying attribute is a
+localized `aria-label`, add that label, copied exactly, to `LOCALIZED_LABELS`
+in `src/content/selectors.ts` under the UI language (`uiLanguage` in B), with
+where it was observed as `source`. Add the same selector to the `SEND` list in
+`docs/send-probe.js` (a unit test checks they match) and a test in
+`test/localizedSend.test.ts` built from the observed structure. Never add a
+translation that was not observed, and never a generic selector such as
+`button[type="submit"]`.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

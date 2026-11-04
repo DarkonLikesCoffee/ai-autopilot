@@ -174,6 +174,12 @@ local fake ChatGPT page and drives the real panel.
   (`localStorage.setItem('chatgpt-autopilot:debug', '1')` in the ChatGPT tab).
   The same switch logs each stage of the send step ("Send step" in the
   console); `docs/send-probe.js` captures a hand-typed baseline to compare.
+- Some ChatGPT interface languages identify the Send and Stop buttons only by
+  a translated label. Recognized: English and Spanish (`Enviar`, `Detener`,
+  observed on es-ES). Other languages work when ChatGPT provides its
+  language-independent `data-testid`/`id`; otherwise sending stops with "the
+  send button did not become available" until the label is added
+  (`docs/LIVE_VALIDATION.md` → "Adding a language").
 - The tab must stay open. It may be behind other tabs: Autopilot sends into the
   session's tab, never the active one (tested). Whether typing and sending behave
   the same in a truly hidden tab, where Chrome throttles timers, was not

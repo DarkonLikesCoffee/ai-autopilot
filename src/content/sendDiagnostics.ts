@@ -10,6 +10,7 @@
 
 import { isVisible } from './page.ts';
 import type { SelectorConfig } from './selectors.ts';
+import { findSendButton } from './sendButton.ts';
 
 /** Attribute values longer than this are cut; labels are short. */
 const MAX_VALUE = 60;
@@ -33,8 +34,8 @@ export interface SendDiagnostic {
   composer: ComposerInfo | null;
   /** Per configured send selector: what it matches. */
   sendSelectors: { selector: string; matches: ElementInfo[]; total: number }[];
-  /** The button findSend would use, as an index into the flattened matches, or null. */
-  chosen: { selector: string; index: number; usable: boolean } | null;
+  /** The button the send step would use (findSendButton): its selector, its index among that selector's matches, whether it is enabled and inside the message box's form. */
+  chosen: { selector: string; index: number; usable: boolean; inComposerForm: boolean } | null;
   /** Buttons in the message box's form (or nearest container), whether or not a selector matches them. */
   nearbyButtons: ElementInfo[];
 }
@@ -136,14 +137,15 @@ export function collectSendDiagnostic(
     const all = safeAll(doc, selector);
     return { selector, matches: all.slice(0, MAX_PER_SELECTOR).map(describeElement), total: all.length };
   });
-  let chosen: SendDiagnostic['chosen'] = null;
-  for (const entry of sendSelectors) {
-    const index = entry.matches.findIndex((m) => m.visible);
-    if (index >= 0) {
-      chosen = { selector: entry.selector, index, usable: !entry.matches[index]!.disabled };
-      break;
-    }
-  }
+  const choice = findSendButton(doc, selectors.sendControl, composer);
+  const chosen: SendDiagnostic['chosen'] = choice
+    ? {
+        selector: choice.selector,
+        index: safeAll(doc, choice.selector).indexOf(choice.element),
+        usable: !isDisabled(choice.element),
+        inComposerForm: choice.inComposerForm,
+      }
+    : null;
   return {
     stage,
     elapsedMs,
