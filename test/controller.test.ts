@@ -609,3 +609,37 @@ test('with no delay, a continuation retargeted from an unconfirmed read still wa
   await h.advance(0);
   assert.equal(h.submits.length, 1);
 });
+
+// --- T5: the activity log shows each stage of a cycle ---
+
+test('a full cycle logs each stage once, in order, without any conversation text', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.see(obs('generating', key('m1')));
+  for (let i = 0; i < 3; i++) await h.see(obs('generating', key('m1'))); // streaming updates
+  await h.see(obs('complete', key('m1')));
+  await h.advance(5000);
+  // The continuation's own answer streams and finishes.
+  await h.see(obs('generating', key('m2')));
+  const messages = (await h.session()).log.map((entry) => entry.message);
+  assert.deepEqual(messages, [
+    'Autopilot started. Waiting for ChatGPT to finish a response.',
+    'ChatGPT is generating a response.',
+    'Response complete. Continuation 1 in 5s.',
+    'Sending continuation 1.',
+    'Continuation 1 sent.',
+  ], 'the page reported generating right after the send, so the next response is already counted as seen');
+  await h.see(obs('complete', key('m2')));
+  const later = (await h.session()).log.map((entry) => entry.message).slice(5);
+  assert.deepEqual(later, ['Response complete. Continuation 2 in 5s.']);
+});
+
+test('a generation observed while the continuation is pending is logged as a cancellation, not twice', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  await h.see(obs('generating', key('m2')));
+  const messages = (await h.session()).log.map((entry) => entry.message);
+  assert.equal(messages.filter((m) => m === 'ChatGPT is generating a response.').length, 1);
+  assert.equal(messages.at(-1), 'ChatGPT started generating again; the pending continuation was cancelled.');
+});

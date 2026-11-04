@@ -196,6 +196,10 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
     case 'error':
       return observation.signals.authRequired ? halt(next, 'error', 'auth_required', now) : halt(next, 'error', 'page_error', now);
     case 'generating':
+      if (!state.generationSeen && state.phase === 'watching') {
+        // Once per response: the log then shows that ChatGPT was seen working.
+        next = log(next, now, 'ChatGPT is generating a response.');
+      }
       next.generationSeen = true;
       if (state.phase === 'delay') {
         // A new response started before the delay ended (for example you sent a message): nothing is sent for the old one.
