@@ -101,6 +101,7 @@ function start(): void {
       const result = await submitContinuation(document, () => location.href, DEFAULT_SELECTORS, command.request, {
         ...DEFAULT_SUBMIT_TIMING,
         sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+        now: () => Date.now(),
       });
       if (result.outcome !== 'refused') sentFor.add(key);
       return result;

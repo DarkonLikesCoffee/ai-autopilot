@@ -16,7 +16,7 @@ export interface SubmitRequest {
   expectedKey: string;
 }
 
-export type SubmitFailure = 'no_composer' | 'composer_disabled' | 'insert_failed' | 'send_unavailable' | 'not_sent';
+export type SubmitFailure = 'no_composer' | 'composer_disabled' | 'insert_failed' | 'send_unavailable' | 'tab_suspended' | 'not_sent';
 
 export type SubmitResult =
   /** Checks failed before anything was typed; the page is untouched. */
@@ -31,10 +31,19 @@ export interface SubmitTiming {
   /** How long to wait for evidence that the message was sent. */
   confirmMs: number;
   pollMs: number;
+  /**
+   * Extra time allowed on top of sendReadyMs before the click. If the attempt
+   * took longer than that, the tab was frozen or heavily throttled (a hidden
+   * tab): the background may already have given up on the reply, so the click
+   * is not made.
+   */
+  lateMarginMs: number;
   sleep(ms: number): Promise<void>;
+  /** Wall-clock time. The waits are measured with it, not by counting polls, because timers in hidden tabs can run minutes late. */
+  now(): number;
 }
 
-export const DEFAULT_SUBMIT_TIMING: Omit<SubmitTiming, 'sleep'> = { sendReadyMs: 3000, confirmMs: 10000, pollMs: 100 };
+export const DEFAULT_SUBMIT_TIMING: Omit<SubmitTiming, 'sleep' | 'now'> = { sendReadyMs: 3000, confirmMs: 10000, pollMs: 100, lateMarginMs: 2000 };
 
 const normalize = (text: string) => text.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -230,8 +239,19 @@ export async function submitContinuation(
   // 2. Wait for the send button to become usable, then click it once. Before
   // every look, and right before the click, the page must still be as checked:
   // same conversation, not generating, and the box holding exactly the prompt.
+  const typedAt = timing.now();
   let button: HTMLElement | null = null;
-  for (let waited = 0; ; waited += timing.pollMs) {
+  for (;;) {
+    const elapsed = timing.now() - typedAt;
+    if (elapsed > timing.sendReadyMs + timing.lateMarginMs) {
+      // Suspended or throttled while waiting: never click this late.
+      if (!removePrompt(doc, el, request.text)) return { outcome: 'refused', reason: 'composer_has_text' };
+      return {
+        outcome: 'not_submitted',
+        reason: 'tab_suspended',
+        detail: `the tab was suspended or throttled for ${Math.round(elapsed / 1000)}s while the prompt waited (a hidden or frozen tab), so send was not clicked`,
+      };
+    }
     const changed = pageChangedWhileWaiting(doc, getUrl(), selectors, request, el);
     if (changed) return changed;
     const candidate = findFirstVisible(doc, selectors.sendControl);
@@ -239,7 +259,7 @@ export async function submitContinuation(
       button = candidate;
       break;
     }
-    if (waited >= timing.sendReadyMs) break;
+    if (elapsed >= timing.sendReadyMs) break;
     await timing.sleep(timing.pollMs);
   }
   if (!button) {
@@ -252,11 +272,13 @@ export async function submitContinuation(
   button.click();
 
   // 3. Confirm on the page that it was sent.
-  for (let waited = 0; waited <= timing.confirmMs; waited += timing.pollMs) {
+  const clickedAt = timing.now();
+  for (;;) {
     const current = findComposer(doc, selectors);
     const promptInBox = !!current && normalize(composerText(current)) === normalize(request.text);
     const evidence = submissionEvidence(userCountBefore, observePage(doc, getUrl(), selectors).signals, promptInBox);
     if (evidence.sent) return { outcome: 'submitted', sawGenerating: evidence.generating };
+    if (timing.now() - clickedAt >= timing.confirmMs) break;
     await timing.sleep(timing.pollMs);
   }
   const box = findComposer(doc, selectors);

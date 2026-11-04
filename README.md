@@ -175,8 +175,11 @@ local fake ChatGPT page and drives the real panel.
 - The tab must stay open. It may be behind other tabs: Autopilot sends into the
   session's tab, never the active one (tested). Whether typing and sending behave
   the same in a truly hidden tab, where Chrome throttles timers, was not
-  verified (headless test browsers report every tab as visible). If sending
-  fails there, Autopilot reports an error instead of guessing. If Chrome
+  verified (headless test browsers report every tab as visible, and freezing a
+  page through DevTools did not stop its timers). The send step measures its
+  waits in wall-clock time, so a throttled or frozen tab cannot stretch them:
+  if the prompt waited more than about 5 s for the Send button, Send is not
+  clicked, the prompt is removed and Autopilot stops with an error. If Chrome
   discards the tab, it cannot answer, so the next send is refused and Autopilot
   stops with an error.
 - Starting requires the conversation to be the active tab in the focused window.
