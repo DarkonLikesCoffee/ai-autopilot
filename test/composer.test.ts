@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { submitContinuation, type SubmitRequest, type SubmitResult } from '../src/content/composer.ts';
+import type { SendDiagnostic } from '../src/content/sendDiagnostics.ts';
 import { DEFAULT_SELECTORS } from '../src/content/selectors.ts';
 
 const PROMPT = 'Continue working on the project.';
@@ -36,7 +37,7 @@ function page() {
     },
   };
   const el = (attrs: Record<string, string> = {}, extra: object = {}) => ({
-    textContent: '', getAttribute: (n: string) => attrs[n] ?? null, closest: () => null, checkVisibility: () => true, ...extra,
+    tagName: 'BUTTON', textContent: '', getAttribute: (n: string) => attrs[n] ?? null, closest: () => null, checkVisibility: () => true, ...extra,
   });
   const doc = {
     querySelectorAll(selector: string) {
@@ -270,4 +271,43 @@ test('your text typed while the frozen tab slept is kept when the late attempt i
   assert.deepEqual(result, { outcome: 'refused', reason: 'composer_has_text' });
   assert.equal(p.state.composer!.value, PROMPT + ' plus mine');
   assert.equal(p.state.clicks, 0);
+});
+
+// --- Send-step diagnostics (opt-in) ---
+
+function runWithDiagnostics(p: ReturnType<typeof page>, diagnose: (d: SendDiagnostic) => void, duringWait?: (poll: number) => void): Promise<SubmitResult> {
+  let clock = 0;
+  let polls = 0;
+  return submitContinuation(p.doc, () => p.state.url, DEFAULT_SELECTORS, request, {
+    sendReadyMs: 300, confirmMs: 300, pollMs: 100, lateMarginMs: 2000,
+    sleep: async (ms) => { clock += ms; polls += 1; duringWait?.(polls); },
+    now: () => clock,
+    diagnose,
+  });
+}
+
+test('with diagnostics on, a send button that never becomes usable is described at each stage, without the prompt', async () => {
+  const p = page();
+  p.state.sendUsable = false;
+  const seen: SendDiagnostic[] = [];
+  const result = await runWithDiagnostics(p, (d) => seen.push(d));
+  assert.equal(result.outcome, 'not_submitted');
+  const stages = seen.map((d) => d.stage);
+  assert.equal(stages[0], 'typed');
+  assert.ok(stages.includes('waiting_for_send_button'));
+  assert.equal(stages.at(-1), 'send_button_unavailable');
+  const last = seen.at(-1)!;
+  assert.equal(last.insertion?.method, 'textarea');
+  assert.equal(last.composer?.holdsPrompt, true, 'described before the prompt is removed');
+  assert.deepEqual(last.chosen, { selector: DEFAULT_SELECTORS.sendControl[0], index: 0, usable: false });
+  assert.ok(!JSON.stringify(seen).includes(PROMPT));
+});
+
+test('diagnostics never change the outcome, even when they fail', async () => {
+  const plain = page();
+  const r1 = await run(plain);
+  const traced = page();
+  const r2 = await runWithDiagnostics(traced, () => { throw new Error('diagnostics broke'); });
+  assert.deepEqual(r2, r1);
+  assert.equal(traced.state.clicks, 1);
 });

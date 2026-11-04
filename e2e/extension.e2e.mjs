@@ -273,6 +273,10 @@ try {
 
   // ---- 16: a failed submission is detected and handled safely ----
   const brokenChat = await openConversation('/c/e2e-broken');
+  // Opt-in send diagnostics on for this tab: they must describe the failure without the prompt.
+  const sendLogs = [];
+  brokenChat.on('console', (msg) => { if (msg.text().includes('Send step')) sendLogs.push(msg); });
+  await brokenChat.evaluate(() => localStorage.setItem('chatgpt-autopilot:debug', '1'));
   await start(brokenChat);
   await userSends(brokenChat, 'Broken send test');
   await waitFor('delay phase', async () => (await session()).phase === 'delay');
@@ -281,6 +285,14 @@ try {
   const leftover = await brokenChat.evaluate(() => document.getElementById('prompt-textarea').innerText.trim());
   check('16: a send that does not happen is reported, not retried, and the prompt is removed from the box',
     (await session()).run === 'error' && (await messages(brokenChat)).length === 1 && leftover === '', JSON.stringify(leftover));
+
+  const sendDiagnostics = await Promise.all(sendLogs.map(async (msg) => ({ text: msg.text(), args: await Promise.all(msg.args().map((a) => a.jsonValue().catch(() => null))) })));
+  const serialized = JSON.stringify(sendDiagnostics);
+  const stages = sendDiagnostics.map((d) => d.args[1]?.stage);
+  check('opt-in send diagnostics describe the failed send, without the prompt',
+    stages.includes('typed') && stages.includes('clicking_send') && stages.includes('not_confirmed') && !serialized.includes(PROMPT) && !serialized.includes('Broken send test'),
+    `stages=${stages.join(',')}`);
+  await brokenChat.evaluate(() => localStorage.removeItem('chatgpt-autopilot:debug'));
   await stop();
 
   // ---- 17: an unknown page state does not trigger submission ----

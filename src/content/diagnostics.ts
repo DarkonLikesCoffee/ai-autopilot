@@ -84,13 +84,18 @@ export function collectDiagnostic(root: QueryRoot, observation: PageObservation)
   return { status: observation.status, responseKey: observation.responseKey, signals: observation.signals, markers, buttons };
 }
 
+/** Logs a value when its key differs from the previous one's. */
+export function createChangeLogger<T>(log: (value: T) => void, keyOf: (value: T) => string = (v) => JSON.stringify(v)) {
+  let last = '';
+  return (value: T) => {
+    const key = keyOf(value);
+    if (key === last) return;
+    last = key;
+    log(value);
+  };
+}
+
 /** Logs a diagnostic when it differs from the previous one. */
 export function createDiagnosticLogger(log: (diagnostic: PageDiagnostic) => void) {
-  let last = '';
-  return (diagnostic: PageDiagnostic) => {
-    const serialized = JSON.stringify(diagnostic);
-    if (serialized === last) return;
-    last = serialized;
-    log(diagnostic);
-  };
+  return createChangeLogger(log);
 }
