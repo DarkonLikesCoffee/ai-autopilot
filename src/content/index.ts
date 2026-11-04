@@ -5,6 +5,7 @@
 
 import { DEFAULT_SUBMIT_TIMING, submitContinuation, type SubmitResult } from './composer.ts';
 import { createDetector } from './detector.ts';
+import { collectDiagnostic, createDiagnosticLogger, diagnosticsEnabled } from './diagnostics.ts';
 import { observePage } from './page.ts';
 import { DEFAULT_SELECTORS } from './selectors.ts';
 import type { ContentCommand, ContentReport } from '../shared/messages.ts';
@@ -19,6 +20,14 @@ function extensionAlive(): boolean {
     return !!chrome.runtime?.id;
   } catch {
     return false;
+  }
+}
+
+function safeLocalStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
   }
 }
 
@@ -41,8 +50,16 @@ function start(): void {
     });
   };
 
+  // Opt-in, text-free detection diagnostics for live-site validation (see diagnostics.ts).
+  const logDiagnostic = createDiagnosticLogger((diagnostic) => console.info('[ChatGPT Autopilot] Page detection', diagnostic));
+  const readPage = () => {
+    const observation = observePage(document, location.href, DEFAULT_SELECTORS);
+    if (diagnosticsEnabled(safeLocalStorage())) logDiagnostic(collectDiagnostic(document, observation));
+    return observation;
+  };
+
   const detector = createDetector({
-    read: () => observePage(document, location.href, DEFAULT_SELECTORS),
+    read: readPage,
     emit: (observation) => send({ type: 'PAGE_OBSERVATION', observation }),
     timers: { setTimeout: (cb, ms) => window.setTimeout(cb, ms), clearTimeout: (h) => window.clearTimeout(h as number) },
   });
@@ -67,7 +84,7 @@ function start(): void {
     childList: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-testid', 'aria-label', 'aria-disabled', 'disabled', 'hidden', 'class', 'role'],
+    attributeFilter: ['data-testid', 'data-test-id', 'data-state', 'data-is-streaming', 'data-talvt-turn-state', 'data-loading-indicator', 'data-d-stream-word', 'data-conversation-role', 'data-user-message-bubble', 'aria-label', 'aria-disabled', 'aria-busy', 'disabled', 'hidden', 'class', 'role'],
   });
 
   // ChatGPT is a single-page app: conversation switches do not reload the page.

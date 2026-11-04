@@ -11,6 +11,8 @@ export interface ElementLike {
   getAttribute(name: string): string | null;
   closest(selector: string): unknown;
   checkVisibility?: () => boolean;
+  /** Present on real elements; used only to find a message id on a nested element. */
+  querySelectorAll?(selector: string): ArrayLike<ElementLike>;
 }
 
 export interface QueryRoot {
@@ -60,6 +62,50 @@ function noticeMatches(root: QueryRoot, selectors: SelectorConfig, patterns: Reg
   return false;
 }
 
+/**
+ * The rendered messages of one kind. The first selector that matches any
+ * visible element defines the list, so a page that carries both a new and an
+ * old marker (often nested, one inside the other) is not counted twice, and
+ * the list stays in document order.
+ */
+export function findMessages(root: QueryRoot, selectors: string[]): ElementLike[] {
+  for (const selector of selectors) {
+    const visible = safeQueryAll(root, selector).filter(isVisible);
+    if (visible.length > 0) return visible;
+  }
+  return [];
+}
+
+function asElement(value: unknown): ElementLike | null {
+  return value && typeof (value as ElementLike).getAttribute === 'function' ? (value as ElementLike) : null;
+}
+
+/**
+ * The stable id of a message: on the element itself, else on the last nested
+ * element that has one (a turn wrapper around the message), else on an
+ * enclosing element. Null when there is none; never guessed.
+ */
+export function messageId(element: ElementLike | undefined, attribute: string): string | null {
+  if (!element) return null;
+  const own = element.getAttribute(attribute);
+  if (own) return own;
+  const selector = `[${attribute}]`;
+  if (typeof element.querySelectorAll === 'function') {
+    try {
+      const nested = Array.from(element.querySelectorAll(selector));
+      const id = nested[nested.length - 1]?.getAttribute(attribute);
+      if (id) return id;
+    } catch {
+      // Fall through to the enclosing element.
+    }
+  }
+  try {
+    return asElement(element.closest(selector))?.getAttribute(attribute) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether an element has text, without keeping the text. */
 export function hasText(element: ElementLike | undefined): boolean {
   if (!element) return false;
@@ -68,7 +114,7 @@ export function hasText(element: ElementLike | undefined): boolean {
 }
 
 export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null } {
-  const assistants = findVisible(root, selectors.assistantMessage);
+  const assistants = findMessages(root, selectors.assistantMessage);
   const last = assistants[assistants.length - 1];
   const composers = findVisible(root, selectors.composer);
   return {
@@ -79,12 +125,12 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       sendControlFound: findVisible(root, selectors.sendControl).length > 0,
       streamingMarkerFound: findVisible(root, selectors.streamingMarker).length > 0,
       assistantMessageCount: assistants.length,
-      userMessageCount: findVisible(root, selectors.userMessage).length,
+      userMessageCount: findMessages(root, selectors.userMessage).length,
       errorNoticeFound: noticeMatches(root, selectors, ERROR_PATTERNS),
       usageLimitNoticeFound: noticeMatches(root, selectors, USAGE_LIMIT_PATTERNS),
       authRequired: noticeMatches(root, selectors, AUTH_PATTERNS) || (composers.length === 0 && findVisible(root, selectors.loginControl).length > 0),
     },
-    lastMessageId: last?.getAttribute(selectors.messageIdAttribute) ?? null,
+    lastMessageId: messageId(last, selectors.messageIdAttribute),
   };
 }
 

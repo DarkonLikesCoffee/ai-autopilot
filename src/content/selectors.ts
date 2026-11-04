@@ -1,6 +1,8 @@
 // Every assumption about ChatGPT's page structure lives here. When ChatGPT
 // changes its interface, this is the file to update. Each list is tried in
-// order; any match counts. If none of the composer selectors match, the page
+// order; for controls and markers any match counts. For message lists
+// (assistantMessage, userMessage) the first selector that matches anything
+// defines the list, so put the most specific current marker first. If none of the composer selectors match, the page
 // status is reported as "unknown" rather than guessed.
 
 export interface SelectorConfig {
@@ -12,9 +14,9 @@ export interface SelectorConfig {
   sendControl: string[];
   /** Markers that a response is still streaming. */
   streamingMarker: string[];
-  /** Rendered assistant messages. Only their count and id attribute are read, never their text. */
+  /** Rendered assistant messages; the first matching selector wins. Only their count and id attribute are read, never their text. */
   assistantMessage: string[];
-  /** Rendered user messages. Only counted, to confirm that a continuation was sent. */
+  /** Rendered user messages; the first matching selector wins. Only counted, to confirm that a continuation was sent. */
   userMessage: string[];
   /** Controls shown when ChatGPT wants you to log in. */
   loginControl: string[];
@@ -38,6 +40,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'button[aria-label="Stop streaming"]',
     'button[aria-label="Stop generating"]',
     'button[aria-label="Stop answering"]',
+    'button[aria-label="Detener"]',
   ],
   sendControl: [
     'button[data-testid="send-button"]',
@@ -45,9 +48,9 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     'button[aria-label="Send prompt"]',
     'button[aria-label="Send message"]',
   ],
-  streamingMarker: ['.result-streaming', '[data-testid="streaming-indicator"]'],
-  assistantMessage: ['[data-message-author-role="assistant"]'],
-  userMessage: ['[data-message-author-role="user"]'],
+  streamingMarker: ['[data-talvt-turn-state="in_progress"]', '.result-streaming', '[data-testid="streaming-indicator"]'],
+  assistantMessage: ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
+  userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],
   loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
   messageIdAttribute: 'data-message-id',
   noticeRegion: [
@@ -59,7 +62,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     '.text-token-text-error',
     '[class*="border-token-surface-error"]',
   ],
-  messageContainer: '[data-message-author-role]',
+  messageContainer: '[data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
 };
 
 // Patterns are matched against short notice texts only; the text is discarded right away.

@@ -146,7 +146,8 @@ Architecture (`src/`):
   ChatGPT's page; `page.ts` turns the page into a text-free observation;
   `detector.ts` coalesces DOM changes and applies the completion confirmation
   delay; `composer.ts` types, verifies, sends and confirms the continuation;
-  `index.ts` wires it to the extension.
+  `diagnostics.ts` is the opt-in, text-free detection log; `index.ts` wires
+  it to the extension.
 - `shared/session.ts` — the continuation state machine (pure functions): phases
   *watching → delay → submitting* inside *running / paused / error / stopped*.
 - `background/controller.ts` — applies events one at a time from persisted state,
@@ -166,7 +167,9 @@ local fake ChatGPT page and drives the real panel.
   tests: those use a fake page that mimics ChatGPT's structure. ChatGPT's page
   changes over time; if detection or sending stops working, update
   `src/content/selectors.ts`. Autopilot stops with an error rather than
-  pretending to succeed.
+  pretending to succeed. `docs/LIVE_VALIDATION.md` is the manual procedure
+  for checking the real site, using opt-in, text-free detection diagnostics
+  (`localStorage.setItem('chatgpt-autopilot:debug', '1')` in the ChatGPT tab).
 - The tab must stay open. It may be behind other tabs: Autopilot sends into the
   session's tab, never the active one (tested). Whether typing and sending behave
   the same in a truly hidden tab, where Chrome throttles timers, was not
