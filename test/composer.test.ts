@@ -181,3 +181,35 @@ test('a click that does not send: the prompt is removed, unless you typed into t
   assert.equal(r2.outcome, 'uncertain');
   assert.equal(q.state.composer!.value, 'typed after the click');
 });
+
+// --- After the click ---
+
+test('more user messages appearing while the prompt is still in the box is not taken as sent', async () => {
+  const p = page();
+  // The click does nothing, but older messages load in (or the thread re-renders) meanwhile.
+  p.state.onClick = () => { p.state.clicks += 1; p.state.userMessages += 3; };
+  const result = await run(p);
+  assert.equal(result.outcome, 'not_submitted', 'the prompt never left the box');
+  assert.equal(p.state.clicks, 1);
+  assert.equal(p.state.composer!.value, '');
+});
+
+test('a send that clears the box a moment after the click is still confirmed', async () => {
+  const p = page();
+  let polls = 0;
+  p.state.onClick = () => { p.state.clicks += 1; p.state.userMessages += 1; };
+  const result = await submitContinuation(p.doc, () => p.state.url, DEFAULT_SELECTORS, request, {
+    sendReadyMs: 300, confirmMs: 1000, pollMs: 100,
+    sleep: async () => { polls += 1; if (polls === 3) p.state.composer!.value = ''; },
+  });
+  assert.equal(result.outcome, 'submitted');
+  assert.equal(p.state.clicks, 1);
+});
+
+test('generation starting while the prompt is still in the box is not taken as sent', async () => {
+  const p = page();
+  p.state.onClick = () => { p.state.clicks += 1; p.state.generating = true; };
+  const result = await run(p);
+  assert.notEqual(result.outcome, 'submitted');
+  assert.equal(p.state.clicks, 1);
+});
