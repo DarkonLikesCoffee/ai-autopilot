@@ -86,6 +86,7 @@ stop over guessing:
 | A response is still streaming, or streaming pauses briefly between chunks | Nothing; a response only counts as finished after the page stays finished for the completion confirmation delay |
 | The same response is reported again (re-renders, navigation back, an already-finished page) | Nothing; a completion only counts after a new generation was seen, and each response is answered at most once |
 | ChatGPT starts generating during the delay (for example you sent something) | The pending continuation is cancelled |
+| The finished response is updated on the page during the delay (a new message id, a re-render) without a new generation | The one pending continuation moves to the updated response, with a fresh delay; an already answered response is never targeted |
 | The message box contains text (you are typing) | Paused; your text is never touched |
 | The tab switches to another conversation | Paused; nothing is sent anywhere else |
 | Usage limit, login prompt or an error notice | Stopped with an error; never retried automatically |

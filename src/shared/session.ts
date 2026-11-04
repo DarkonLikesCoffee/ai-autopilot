@@ -205,6 +205,15 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
       return { state: next, effects: [] };
     case 'complete': {
       const key = observation.responseKey;
+      if (state.phase === 'delay' && key !== null && key !== state.pendingKey && !state.answeredKeys.includes(key)) {
+        // The finished response got a different key without a new generation (a late
+        // message id, a re-render). It is still the one response this delay is for:
+        // move the single pending continuation to it, with a fresh delay. A key that
+        // was already answered never becomes the target.
+        const dueAt = now + settings.delaySeconds * 1000;
+        next = log({ ...next, pendingKey: key, dueAt }, now, `The finished response was updated on the page; continuation ${state.cycles + 1} in ${settings.delaySeconds}s.`);
+        return { state: next, effects: [{ type: 'schedule', dueAt }] };
+      }
       if (state.phase !== 'watching' || !state.generationSeen || key === null || state.answeredKeys.includes(key)) {
         return { state: next, effects: [] };
       }
@@ -261,7 +270,10 @@ export function transition(state: SessionState, event: SessionEvent): Transition
         case 'generating':
           return toWatching('ChatGPT is generating again; nothing was sent.', true);
         case 'response_changed':
-          return toWatching('A different response is now the latest; nothing was sent.', false);
+          // Still the same turn (no new generation was seen), so the generation stays
+          // seen: the response that is now the latest can be continued once, unless it
+          // was already answered.
+          return toWatching('A different response is now the latest; nothing was sent.', true);
         case 'not_complete':
           return halt(state, 'paused', 'submission_uncertain', now, 'the page state could not be confirmed, so nothing was sent');
         case 'composer_has_text':
