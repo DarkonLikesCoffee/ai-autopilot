@@ -128,7 +128,10 @@ export function createController(deps: ControllerDeps): Controller {
       return (await apply(state, { type: 'PRECHECK_FAILED', key, reason: 'tab_unreachable', now }, settings)).state;
     }
     const failure = precheckObservation(state, observation, key);
-    if (failure) return (await apply(state, { type: 'PRECHECK_FAILED', key, reason: failure, now }, settings)).state;
+    if (failure) {
+      const failed = (await apply(state, { type: 'PRECHECK_FAILED', key, reason: failure, now }, settings)).state;
+      return failure === 'response_changed' ? observeAgain(failed, tabId, settings, observation) : failed;
+    }
 
     // Write-ahead: the response is recorded as answered before anything is sent.
     const begun = await apply(state, { type: 'SUBMIT_BEGIN', key, now }, settings);
@@ -137,6 +140,21 @@ export function createController(deps: ControllerDeps): Controller {
     const request: SubmitRequest = { text: settings.prompt, expectedPath: state.conversation ?? '', expectedKey: key };
     const result = await safe(tabs.submit(tabId, key, request), null);
     return applyResult(begun.state, key, result, settings);
+  }
+
+  /**
+   * After a "response changed" refusal, the page's report of the new latest response
+   * may already have been ignored (or not arrived yet), and the detector does not
+   * repeat a report. Feed the state machine a fresh read so it is not left waiting.
+   */
+  async function observeAgain(state: SessionState, tabId: number, settings: Settings, known?: PageObservation): Promise<SessionState> {
+    if (state.run !== 'running' || state.tabId !== tabId) return state;
+    const observation = known ?? (await safe(tabs.getObservation(tabId), null));
+    if (observation === null) return state;
+    // This read did not pass the detector's completion confirmation window, so the
+    // delay is at least that long; the page is checked again before anything is sent.
+    const timing = { ...settings, delaySeconds: Math.max(settings.delaySeconds, settings.confirmSeconds) };
+    return (await apply(state, { type: 'OBSERVATION', tabId, observation, settings: timing, now: deps.now() }, settings)).state;
   }
 
   async function applyResult(state: SessionState, key: string, result: SubmitResult | null, settings: Settings): Promise<SessionState> {
@@ -151,7 +169,11 @@ export function createController(deps: ControllerDeps): Controller {
     } else {
       event = { type: 'SUBMIT_RESULT', key, outcome: result.outcome, detail: result.detail, sawGenerating: false, now };
     }
-    return (await apply(state, event, settings)).state;
+    const next = (await apply(state, event, settings)).state;
+    if (result?.outcome === 'refused' && result.reason === 'response_changed' && state.tabId !== null) {
+      return observeAgain(next, state.tabId, settings);
+    }
+    return next;
   }
 
   async function load(): Promise<{ settings: Settings; session: SessionState }> {

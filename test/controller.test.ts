@@ -484,3 +484,128 @@ test('notifications follow the setting', async () => {
   await h.see(obs('usage_limit', key('m1')));
   assert.equal(h.notifications.length, 0);
 });
+
+// --- T2: late page updates, regenerated responses, DOM replacement ---
+
+test('a late change of the finished response\'s id during the delay retargets the one pending continuation', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('tmp');
+  assert.equal(h.scheduled.length, 1);
+  // ChatGPT assigns the final message id after the stream ended; no new generation.
+  await h.see(obs('complete', key('final')));
+  const s = await h.session();
+  assert.equal(s.phase, 'delay');
+  assert.equal(s.pendingKey, key('final'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  assert.equal(h.submits[0]!.key, key('final'));
+  assert.equal((await h.session()).cycles, 1);
+  // The old id showing up again (a re-render) never adds a second continuation.
+  await h.see(obs('complete', key('tmp')));
+  await h.see(obs('complete', key('final')));
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 1);
+});
+
+test('a key change seen only by the check before sending still leads to exactly one continuation', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('tmp');
+  // The page changed, but its report has not arrived yet.
+  h.page.observation = obs('complete', key('final'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 0, 'nothing is sent for the stale key');
+  const s = await h.session();
+  assert.equal(s.run, 'running');
+  assert.equal(s.phase, 'delay', 'not stuck: the continuation now targets the current response');
+  assert.equal(s.pendingKey, key('final'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  assert.equal(h.submits[0]!.key, key('final'));
+});
+
+test('during the delay, an already answered response becoming the latest again cancels instead of sending', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  await h.respond('m2');
+  // A re-render briefly shows the older, answered response as the latest.
+  await h.see(obs('complete', key('m1')));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1, 'nothing is sent while the page shows the answered response');
+  assert.equal((await h.session()).run, 'running');
+  // The page shows m2 again: it is continued once, not left waiting forever.
+  await h.see(obs('complete', key('m2')));
+  await h.advance(5000);
+  assert.deepEqual(h.submits.map((s) => s.key), [key('m1'), key('m2')]);
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 2);
+});
+
+test('a "response changed" refusal by the page itself does not leave the session waiting forever', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('tmp');
+  // The background's check passes; a moment later the page's own check sees the final id.
+  let refusals = 0;
+  const send = h.page.onSubmit;
+  h.page.onSubmit = (request) => {
+    if (refusals === 0) {
+      refusals += 1;
+      h.page.observation = obs('complete', key('final'));
+      return { outcome: 'refused', reason: 'response_changed' };
+    }
+    return send(request);
+  };
+  await h.advance(5000);
+  assert.equal(refusals, 1);
+  const s = await h.session();
+  assert.equal(s.phase, 'delay');
+  assert.equal(s.pendingKey, key('final'));
+  assert.ok(!s.answeredKeys.includes(key('tmp')), 'nothing was typed for the refused key');
+  await h.advance(5000);
+  assert.deepEqual(h.submits.map((x) => x.key), [key('tmp'), key('final')]);
+  assert.equal((await h.session()).cycles, 1, 'one continuation actually sent');
+});
+
+test('a regenerated response with a new id gets one continuation; one with the same key gets none', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  // The continuation's answer finishes; then you regenerate it.
+  await h.respond('m2');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 2);
+  await h.respond('m2-regenerated');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 3, 'a regenerated answer is a new response');
+  // Without message ids, a regenerated answer keeps its key: it is never answered twice.
+  await h.see(obs('generating', key('m2-regenerated')));
+  await h.see(obs('complete', key('m2-regenerated')));
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 3);
+});
+
+test('with no delay, a continuation retargeted from an unconfirmed read still waits the confirmation delay', async () => {
+  const h = harness(undefined, { delaySeconds: 0, confirmSeconds: 2 });
+  ok(await h.ui('START'));
+  await h.respond('tmp');
+  h.page.observation = obs('complete', key('final'));
+  await h.advance(0);
+  assert.equal(h.submits.length, 0);
+  const s = await h.session();
+  assert.equal(s.pendingKey, key('final'));
+  assert.equal(s.dueAt, h.clock.now + 2000);
+  // Streaming resumes inside that window: nothing is sent for it.
+  await h.see(obs('generating', key('final')));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 0);
+  await h.see(obs('complete', key('final')));
+  await h.advance(0);
+  assert.equal(h.submits.length, 1);
+});

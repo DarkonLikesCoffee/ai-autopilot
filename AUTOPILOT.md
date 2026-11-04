@@ -82,7 +82,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 Choose the highest-priority task that remains valid after inspecting the current code, open PRs and CI. Update this list as tasks are completed or priorities change.
 
 - [ ] **T1 (P0): Live-site compatibility investigation.** Partly done (2026-11-03): the manual procedure is `docs/LIVE_VALIDATION.md`; opt-in text-free diagnostics exist; selectors from the owner's live observations (`data-conversation-role`, `data-user-message-bubble`, `data-talvt-turn-state="in_progress"`, Spanish stop label "Detener") are in `selectors.ts`. **Remaining:** a person must run the procedure on the real site and record results. [ASSUMED] the new selectors match the live site — they come from the owner's branch `fix/live-chatgpt-detection`; no run is recorded.
-- [ ] **T2 (P0): Completion-detection test coverage.** Audit detector edge cases (streaming pauses, regenerated responses, DOM replacement, conversation navigation and delayed UI updates); add deterministic tests for uncovered cases.
+- [x] **T2 (P0): Completion-detection test coverage.** Done 2026-11-04. Added deterministic tests for streaming that pauses and resumes, DOM replacement inside the confirmation window, response ids that change after completion, navigation away and back, and regenerated responses (new id vs same key). Found and fixed a silent stall: a finished response whose key changed without a new generation (a late message id, a re-render) left Autopilot "Running" but never continuing. The pending continuation now moves to the updated response with a fresh delay (at least the confirmation delay when the read was not confirmed); answered keys are never targeted. [ASSUMED] that ChatGPT really assigns ids late — not observed; the fix is safe either way.
 - [ ] **T3 (P0): Submission safety audit.** Audit composer typing, send-button detection and sent-message confirmation for duplicate/lost-message race conditions; add tests for each discovered issue.
 - [ ] **T4 (P0): Hidden/background tab behavior.** Investigate timer throttling, tab visibility and discarded tabs; define and test a safe supported behavior.
 - [ ] **T5 (P1): Diagnostics.** Ensure the activity log clearly distinguishes detected completion, confirmed completion, scheduled continuation, submission attempt and confirmed submission, without exposing conversation text.
@@ -118,6 +118,8 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 - [VERIFIED] The extension cannot decide whether the AI's project work is correct or whether a project milestone is genuinely complete. Evidence: product architecture and `README.md`.
 - [UNRESOLVED] A model can misunderstand instructions, repeat work, or report completion inaccurately. Evidence-based project state and CI reduce but do not eliminate this risk.
 
+- [VERIFIED] A response whose key does not change when it is regenerated (no message ids, count-based keys) is not continued again; this is the safe direction. Evidence: `test/controller.test.ts` ("a regenerated response with a new id…").
+
 ## 10. Decisions
 
 | ID | Decision | Rationale | Status |
@@ -129,6 +131,7 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | D5 | Validate single-session reliability before multi-session support. | Prevents multiplying unresolved state and race conditions. | Active |
 | D6 | Development PRs should target `main`; automatic merging is allowed only after required CI checks pass. | Enables unattended contributions without bypassing verification. | Superseded by D7 |
 | D7 | Owner authorizes Claude to merge its own PRs. Auto-merge (squash) may be enabled while required checks are pending; GitHub merges only after they pass. Merge state is verified afterwards. | Owner instruction, 2026-11-04. GitHub enforces the required checks, so waiting adds nothing. | Active |
+| D8 | When the latest finished response changes key during the delay without a new generation, retarget the single pending continuation instead of dropping it. | Dropping it caused a silent stall; retargeting still sends at most one continuation per observed generation, never for an answered key, and re-checks the page before sending. | Active |
 
 ## 11. Session history
 
@@ -136,12 +139,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 |---|---|---|---|
 | 2026-11-03 | Established persistent Claude Code development context and roadmap. | [VERIFIED] Added `CLAUDE.md`, `AUTOPILOT.md` and `docs/ROADMAP.md` on a dedicated branch. | Documentation-only change; code checks not run. |
 | 2026-11-03 | T1 (partial): landed the owner's live-detection selectors (`fix/live-chatgpt-detection`, previously without a PR) with fixes. Message lists now use the first matching selector, so nested current + older markup is not double-counted and the latest message is taken in document order; the message id is also found on a nested/enclosing element. Diagnostics made opt-in (`localStorage` key `chatgpt-autopilot:debug`), text-free (button `title` dropped, values capped at 60 chars) and unit-tested. E2E fake page now renders nested current + older markup. Added `docs/LIVE_VALIDATION.md`. | [VERIFIED] in tests below. Live site: NOT RUN (no ChatGPT account in the cloud session). | `npm run check` PASS (typecheck, 74 unit tests, build); `npm run e2e` PASS (all 17 checks, Chromium, fake page). |
+| 2026-11-04 | T2: detector and state-machine edge cases. Fixed the stall after a late response-key change (session retargets the pending continuation; controller re-feeds a fresh read after a "response changed" refusal, with a delay of at least the confirmation delay). 11 new tests. Also: `CLAUDE.md` auto-merge policy (#4), closed redundant #2. `fix/live-chatgpt-detection` could not be deleted from the cloud session (git proxy rejected the delete push; owner can delete it — its content is in `main`). | [VERIFIED] in tests below. | `npm run check` PASS (85 unit tests); `npm run e2e` PASS (all checks, fake page). |
 
 ## 12. Exact next action
 
-- **Next task:** T1 — owner runs `docs/LIVE_VALIDATION.md` on the real ChatGPT site and records results in section 11 (blocked for cloud sessions: needs a logged-in browser). Meanwhile, cloud sessions continue with **T2** (detector edge-case tests: streaming pauses, regenerated responses, DOM replacement, navigation, delayed UI updates).
-- **Why:** Live compatibility can only be shown by a real run; T2 is the highest-priority task a cloud session can verify on its own.
-- **First step for T2:** Read `src/content/detector.ts` and `test/detector.test.ts`; list which of the edge cases above lack a deterministic test; add them.
+- **Next task:** T3 — submission safety audit (composer typing, send-button detection, sent-message confirmation; duplicate/lost-message races). T1 still needs the owner's live run of `docs/LIVE_VALIDATION.md`.
+- **Why:** T3 is the next P0 task a cloud session can verify on its own.
+- **First step:** Read `src/content/composer.ts` and its callers; list each window between typing, clicking and confirming where a page change (re-render, user input, navigation, generation start) could cause a lost or duplicate message; add a test for each in `test/` (a composer test file does not exist yet).
 - **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol

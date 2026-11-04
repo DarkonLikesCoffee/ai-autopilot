@@ -106,3 +106,82 @@ test('reset makes the next evaluation report again; dispose stops everything', (
   assert.equal(emitted.length, 3);
   assert.equal(timers.size, 0);
 });
+
+// --- T2 edge cases ---
+
+test('a DOM replacement during the confirmation window (page briefly unrecognizable) gives one completion, after the window', () => {
+  const { detector, emitted, set, timers } = setup();
+  set(obs('generating', 'k|1'));
+  detector.evaluate();
+  set(obs('complete', 'k|1'));
+  detector.evaluate();
+  timers.advance(300);
+  set(obs('unknown', null));
+  detector.evaluate();
+  timers.advance(300);
+  set(obs('complete', 'k|1'));
+  detector.evaluate();
+  timers.advance(399);
+  assert.deepEqual(statuses(emitted), ['generating']);
+  timers.advance(1);
+  assert.deepEqual(statuses(emitted), ['generating', 'complete']);
+  timers.advance(10_000);
+  assert.equal(emitted.length, 2);
+});
+
+test('streaming that resumes after a pause restarts the window; the completion comes a full window after the real end', () => {
+  const { detector, emitted, set, timers } = setup();
+  set(obs('generating', 'k|1'));
+  detector.evaluate();
+  for (let i = 0; i < 3; i += 1) {
+    set(obs('complete', 'k|1'));
+    detector.evaluate();
+    timers.advance(900);
+    set(obs('generating', 'k|1'));
+    detector.evaluate();
+  }
+  set(obs('complete', 'k|1'));
+  detector.evaluate();
+  timers.advance(999);
+  assert.deepEqual(statuses(emitted), ['generating']);
+  timers.advance(1);
+  assert.deepEqual(statuses(emitted), ['generating', 'complete']);
+});
+
+test('a response id that changes after the completion was reported is reported again', () => {
+  const { detector, emitted, set, timers } = setup();
+  set(obs('generating', 'k|tmp'));
+  detector.evaluate();
+  set(obs('complete', 'k|tmp'));
+  detector.evaluate();
+  timers.advance(1000);
+  set(obs('complete', 'k|final'));
+  detector.evaluate();
+  assert.deepEqual(emitted.map((o) => o.responseKey), ['k|tmp', 'k|tmp', 'k|final']);
+});
+
+test('the completion carries the key the page shows when the window ends', () => {
+  const { detector, emitted, set, timers } = setup();
+  set(obs('generating', 'k|tmp'));
+  detector.evaluate();
+  set(obs('complete', 'k|tmp'));
+  detector.evaluate();
+  set(obs('complete', 'k|final'));
+  timers.advance(1000);
+  assert.deepEqual(emitted.map((o) => o.responseKey), ['k|tmp', 'k|final']);
+});
+
+test('navigating away and back while the window is open does not skip the window for the original conversation', () => {
+  const { detector, emitted, set, timers } = setup();
+  set(obs('generating', 'k|1'));
+  detector.evaluate();
+  set(obs('complete', 'k|1'));
+  detector.evaluate();
+  set(obs('complete', '/c/other|id:9', 'https://chatgpt.com/c/other'));
+  detector.evaluate();
+  set(obs('complete', 'k|1'));
+  detector.evaluate();
+  // Reported at once (no longer leaving a generation), and only once.
+  timers.advance(10_000);
+  assert.deepEqual(emitted.map((o) => o.url), [obs('idle').url, 'https://chatgpt.com/c/other', obs('idle').url]);
+});
