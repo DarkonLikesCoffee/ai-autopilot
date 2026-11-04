@@ -130,12 +130,14 @@ function isUsable(button: HTMLElement): boolean {
 }
 
 /**
- * Evidence that the message was sent: a new user message in the thread, or
- * ChatGPT started generating. An emptied message box alone is not enough.
+ * Evidence that the message was sent: the prompt has left the message box, and
+ * a new user message is in the thread or ChatGPT started generating. Neither
+ * alone is enough: an emptied box can be a re-render, and more user messages
+ * can be older ones loading in while the prompt still waits in the box.
  */
-export function submissionEvidence(userCountBefore: number, signals: PageSignals): { sent: boolean; generating: boolean } {
+export function submissionEvidence(userCountBefore: number, signals: PageSignals, promptInBox: boolean): { sent: boolean; generating: boolean } {
   const generating = signals.stopControlFound || signals.streamingMarkerFound;
-  return { sent: signals.userMessageCount > userCountBefore || generating, generating };
+  return { sent: !promptInBox && (signals.userMessageCount > userCountBefore || generating), generating };
 }
 
 /** Checks the live page, in the tab, right before anything is typed. */
@@ -251,7 +253,9 @@ export async function submitContinuation(
 
   // 3. Confirm on the page that it was sent.
   for (let waited = 0; waited <= timing.confirmMs; waited += timing.pollMs) {
-    const evidence = submissionEvidence(userCountBefore, observePage(doc, getUrl(), selectors).signals);
+    const current = findComposer(doc, selectors);
+    const promptInBox = !!current && normalize(composerText(current)) === normalize(request.text);
+    const evidence = submissionEvidence(userCountBefore, observePage(doc, getUrl(), selectors).signals, promptInBox);
     if (evidence.sent) return { outcome: 'submitted', sawGenerating: evidence.generating };
     await timing.sleep(timing.pollMs);
   }
