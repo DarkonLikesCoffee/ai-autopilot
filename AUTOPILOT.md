@@ -51,20 +51,20 @@
 
 Goal: prove that the extension can safely observe and continue a real ChatGPT conversation under realistic browser conditions, and fail safely when it cannot.
 
-Status: [UNRESOLVED] **In progress — not complete.** Reassessed 2026-11-05 after live runs 2 and 3 (`docs/LIVE_VALIDATION.md`). Five of eight requirements are met; three still lack live evidence (listed under each).
+Status: [UNRESOLVED] **In progress — not complete.** Reassessed 2026-11-05 (runs 2–3, plus the indirect-coverage assessment below). Six of eight requirements are met (two of them with a documented basis); two are open, plus P1.
 
 ### Definition of done
 
-- [ ] **Selectors and completion detection validated against the live site.** [VERIFIED] es-ES: completion detected for every response in runs 2–3 (D2), regenerated answers detected (D5), Send/Stop labels recognized (L1). **Open:** the diagnostic-level checks D1 (messages counted once, id-based key), D3 (user count +1), D4 (composer text detected) and D6 (key follows a conversation switch) were not run. Their end-to-end effects were observed (S1/S2 rely on D1/D3; S3 on D4; S4 on D6), so the owner may accept them as covered **or** run them (about 2 minutes with diagnostics on). English interface (L2) not run: English support stays unverified live.
-- [x] **Sending validated, exactly once.** [VERIFIED] es-ES run 2: three continuations, each confirmed, one per finished response; stopped exactly at the limit. Regenerated answers did not cause a duplicate (D5, run 3).
-- [x] **Composer protection when the user has typed text.** [VERIFIED] run 3, S3 PASS: typing during the countdown paused Autopilot and nothing was sent.
-- [ ] **Conversation switching, usage-limit notices, login/error states and generation restarts fail safely.** [VERIFIED] conversation switching (S4) and generation restarts (D5), run 3. **Open:** usage-limit (N1), login/session-expired (N2) and ChatGPT error notices (N3) not observed live; covered only by unit and E2E tests. Needs either a live observation when they occur, or the owner explicitly accepting them as untestable on demand.
-- [ ] **Background/hidden-tab behaviour understood and documented; unsupported conditions handled safely.** [VERIFIED] S5 (tab behind another tab: sent to the session's tab) and S6 (minimised browser) PASS, run 3. **Open:** for S6 the report does not say which safe outcome occurred (sent once, or stopped with a `tab_suspended` / send-unavailable error). "Understood and documented" needs that observation; README's hidden-tab limitation is updated once it is known.
-- [x] **Unit tests, typecheck and build pass.** [VERIFIED] `npm run check` on `main` (125 tests), CI `check` job.
-- [x] **Browser E2E passes for all relevant deterministic scenarios.** [VERIFIED] CI `e2e` job (fake page, incl. es-ES) on every PR; owner is making it a required check.
-- [x] **No known high-severity regression.** [VERIFIED] none known; runs 2–3 found no failure.
+- [x] **Selectors and completion detection validated against the live site.** [VERIFIED] es-ES: D2, D5, L1 live. D4 and D6 covered by S3/S4 (same signals in real use); D1 and D3 indirectly covered for behaviour, with safe failure modes (see "Indirect coverage assessment"). **Documented exception:** English and other interface languages not live-verified (see "Interface languages").
+- [x] **Sending validated, exactly once.** [VERIFIED] es-ES run 2: three continuations, one per finished response, stopped at the limit; no duplicate after regenerating (D5, run 3).
+- [x] **Composer protection when the user has typed text.** [VERIFIED] S3, run 3.
+- [ ] **Conversation switching, usage-limit notices, login/error states and generation restarts fail safely.** [VERIFIED] switching (S4) and generation restarts (D5), run 3. N1–N3 not live-tested by owner decision; unit/E2E coverage and the reasons are documented. **Open:** the notice patterns are English-only, so on es-ES error notices are not recognized and may not fail safely (see "Language gap"). Needs the Spanish notice texts or an explicit owner decision.
+- [ ] **Background/hidden-tab behaviour understood and documented; unsupported conditions handled safely.** [VERIFIED] S5 and S6 safe, run 3. **Open:** which S6 outcome occurred (owner to clarify from the previous test).
+- [x] **Unit tests, typecheck and build pass.** [VERIFIED] `npm run check`; CI `check`.
+- [x] **Browser E2E passes for all relevant deterministic scenarios.** [VERIFIED] CI `e2e` on every PR (owner making it required).
+- [x] **No known high-severity regression.** [VERIFIED] none known. The es-ES notice gap is a pre-existing limitation, not a regression, and is tracked under requirement 4.
 
-Also required by the live-test minimum (section below), not a separate DoD line: **P1** (Pause/Resume/Stop during the countdown) — NOT RUN.
+Also open from the live-test minimum: **P1** (Pause/Resume/Stop): owner will run it.
 
 Do not claim the milestone complete based only on fake-page tests.
 
@@ -74,12 +74,12 @@ Authoritative status of every live test. Procedure and capture steps: `docs/LIVE
 
 | ID | Test (what you do) | Expected behaviour | DoD item | Status |
 |---|---|---|---|---|
-| D1 | Idle conversation with one finished answer; diagnostics on | `status: complete`; assistant messages counted once; response key ends in `id:…` | Detection | NOT RUN |
+| D1 | Idle conversation with one finished answer; diagnostics on | `status: complete`; assistant messages counted once; response key ends in `id:…` | Detection | Indirectly covered (S1/S2, D5); see assessment |
 | D2 | Send a question yourself and let it stream | Generating for the whole stream, then complete once it ends; log shows "ChatGPT is generating a response." then "Response complete…" | Detection | **VERIFIED** es-ES (Run 2: three responses detected) |
-| D3 | Compare `userMessageCount` before/after D2 | Increases by exactly 1 | Detection | NOT RUN |
-| D4 | Type a draft, do not send; diagnostics on | `composerHasText: true` | Composer protection | NOT RUN |
+| D3 | Compare `userMessageCount` before/after D2 | Increases by exactly 1 | Detection | Indirectly covered (S1/S2); see assessment |
+| D4 | Type a draft, do not send; diagnostics on | `composerHasText: true` | Composer protection | Covered by S3; see assessment |
 | D5 | Regenerate the last answer while Autopilot runs | Generating, then complete; a regenerated answer with a new id gets **one** continuation, one with the same key gets none; never two | Generation restarts | **VERIFIED** (Run 3) |
-| D6 | Switch conversation in the sidebar; diagnostics on | Response key path changes to the new `/c/<id>` | Conversation switching | NOT RUN |
+| D6 | Switch conversation in the sidebar; diagnostics on | Response key path changes to the new `/c/<id>` | Conversation switching | Covered by S4; see assessment |
 | S1 | Start after an answer finished | After the delay exactly one continuation is sent and logged "Continuation N sent." | Sending exactly once | **VERIFIED** es-ES (Run 2) |
 | S2 | Let it run to the limit | Stops at the maximum; never two messages for one answer | Sending exactly once | **VERIFIED** es-ES (Run 2: stopped at 3) |
 | S3 | During the countdown, type into the message box | **At the end of the countdown** (not immediately): Paused, "The message box already contains text"; nothing sent; your text unchanged | Composer protection | **VERIFIED** (Run 3) |
@@ -87,15 +87,48 @@ Authoritative status of every live test. Procedure and capture steps: `docs/LIVE
 | S5 | During the countdown, open another tab in front (same window) | The continuation is still sent to the session's tab, once | Background tabs | **VERIFIED** (Run 3) |
 | S6 | During the countdown, minimise the window or switch to another window, for longer than the delay | Either sent once, or stopped with an error ("…suspended or throttled…" / "the send button did not become available") and the prompt removed; never sent twice or late. Record which | Background tabs | **VERIFIED** safe (Run 3); outcome (sent vs stopped) not reported |
 | P1 | During the countdown, press Pause; later Resume. Separately, press Stop | Pause/Stop: nothing sent. Resume: one continuation after a fresh delay | User control | NOT RUN |
-| N1 | Usage-limit notice appears (when it happens naturally) | Error, "ChatGPT shows a usage limit"; nothing sent; not retried | Error states | NOT RUN (cannot be triggered on demand) |
-| N2 | Logged out / session expired notice (naturally, or log out in another tab) | Error, "ChatGPT asks you to log in"; nothing sent | Error states | NOT RUN |
-| N3 | ChatGPT error notice ("Something went wrong", network error) | Error, "ChatGPT shows an error"; nothing sent | Error states | NOT RUN (cannot be triggered on demand) |
+| N1 | Usage-limit notice appears (when it happens naturally) | Error, "ChatGPT shows a usage limit"; nothing sent; not retried | Error states | NOT RUN: owner decision; unit/E2E coverage documented; **English texts only** |
+| N2 | Logged out / session expired notice (naturally, or log out in another tab) | Error, "ChatGPT asks you to log in"; nothing sent | Error states | NOT RUN: owner decision; unit/E2E coverage documented |
+| N3 | ChatGPT error notice ("Something went wrong", network error) | Error, "ChatGPT shows an error"; nothing sent | Error states | NOT RUN: owner decision; unit/E2E coverage documented; **English texts only** |
 | R1 | Close the ChatGPT tab during the countdown | Paused, "The ChatGPT tab was closed"; nothing sent | Recovery | NOT RUN |
 | R2 | Quit and reopen the browser while running | Paused, "The browser or the extension restarted"; nothing sent until you resume | Recovery | NOT RUN |
 | L1 | Spanish interface (es-ES) | Send (`Enviar`) and Stop (`Detener`) recognized | Detection / sending | **VERIFIED** (Run 2) |
-| L2 | English interface | Same as S1/S2 | Detection / sending | NOT RUN |
+| L2 | English interface | Same as S1/S2 | Detection / sending | NOT RUN: documented exception (not required by the DoD) |
 
-M1's definition of done needs, at minimum: D1–D6, S1–S4 and P1 VERIFIED; S5/S6 observed and their behaviour documented; N1–N3 VERIFIED when they occur, or explicitly accepted as untestable on demand by the owner (they are covered by unit and E2E tests).
+M1's definition of done needs, at minimum: D1–D6, S1–S4 and P1 VERIFIED; S5/S6 observed and their behaviour documented; N1–N3 VERIFIED when they occur, or explicitly accepted as untestable on demand by the owner (they are covered by unit and E2E tests). *Updated 2026-11-05 by owner decision:* D1/D3/D4/D6 may be met by documented indirect coverage; N1–N3 stay unverified live with documented coverage; L2 is a documented exception.
+
+### Indirect coverage assessment: D1, D3, D4, D6 (2026-11-05)
+
+Each diagnostic row checked against what S1–S4 already demonstrated live and the code path those results depend on. Owner decision (2026-11-05): document indirect coverage where an existing live test covers the same behaviour; run a diagnostic only if it would verify something not yet demonstrated.
+
+| ID | What the diagnostic checks | Live evidence and code path | Assessment |
+|---|---|---|---|
+| D1 | Assistant messages counted once; response key uses the message id | S1/S2 (run 2): one continuation per finished response for three cycles, stopped at 3; D5 (run 3): no duplicate after regenerating. A continuation is only sent for an unanswered key after an observed generation (`session.ts` `observe`), whichever key form is used; a doubled count changes neither that rule nor the stop at the limit. | **Indirectly covered** for the safety property D1 exists for (exactly one continuation per response). Not demonstrated: whether live keys are id-based or count-based. The only consequence is that, with count-based keys, a regenerated answer gets no continuation (safe direction). Run not needed. |
+| D3 | User-message count rises by exactly 1 after a send | Used only in the send confirmation: the prompt has left the box **and** (user count rose **or** a generation started) (`composer.ts` `submissionEvidence`). S1/S2: every continuation was confirmed as sent. | **Indirectly covered** for the behaviour (sends are confirmed live). Not demonstrated: the user count signal itself, since confirmation may have come from the generation start. If live user counting were wrong, confirmation still works once ChatGPT starts generating within 10 s; otherwise the result is "uncertain" → paused, never a resend (safe direction). Run not needed. |
+| D4 | `composerHasText` is true when the box has text | S3 (run 3): typing during the countdown paused Autopilot and nothing was sent. That pause is only produced by the precheck reading `composerHasText` (`controller.ts` `precheckObservation`, `composer.ts` `precheck`). | **Covered** (same signal, observed in its real use). |
+| D6 | The response key's path follows a conversation switch | S4 (run 3): switching conversation paused Autopilot and nothing was sent. That pause is triggered by the observation URL's path differing from the session's (`session.ts` `observe`); the key's path comes from the same URL. | **Covered** (same source, observed in its real use). |
+
+Basis: S3/S4 were reported as PASS against this matrix's expected behaviour, which names the pause reason. The exact log lines were not included in the report.
+
+### Notices N1–N3: why they stay unverified live, and what covers them
+
+Owner decision (2026-11-05): keep N1–N3 unverified live and document the coverage.
+
+| ID | Why not practical to trigger live | Unit / E2E coverage |
+|---|---|---|
+| N1 usage limit | Requires exhausting the account's usage quota (and then being locked out for hours) | `test/page.test.ts` "usage-limit notices are detected", "classification order…"; `test/controller.test.ts` "12: a usage limit stops automatic continuation and is never retried automatically"; E2E "12: a usage limit stops Autopilot and nothing is sent", "the panel shows the error" |
+| N2 login / session expired | Requires the session to expire, or logging out while a run is active (disruptive; behaviour then depends on when ChatGPT notices) | `test/page.test.ts` "a login screen or session-expired notice is an error, never a completion"; `test/controller.test.ts` "auth errors and page errors stop automatic continuation"; `test/session.test.ts` "start is refused on a page that cannot be continued" |
+| N3 ChatGPT error notice | Server or network errors occur at random | `test/page.test.ts` "error notices are detected", "words inside conversation messages are not mistaken for notices", "long texts and hidden notices are not treated as notices"; `test/controller.test.ts` "auth errors and page errors stop automatic continuation" |
+
+**[UNRESOLVED] Language gap found during this assessment.** The notice patterns (`USAGE_LIMIT_PATTERNS`, `AUTH_PATTERNS`, `ERROR_PATTERNS` in `selectors.ts`) are **English only**, and the tests above use English notice texts. On the es-ES interface (the one validated live), a Spanish usage-limit or error notice would **not** be recognized. Login detection is partly language-independent (login button or link when the message box is missing). Possible consequences on es-ES:
+- If a notice appears instead of a response, what Autopilot reports depends on what the page shows. If the sent message appears in the thread, the continuation counts as sent and Autopilot keeps showing "Running" (waiting for a generation that never comes). If it does not appear, the outcome is "uncertain" or "not sent", and Autopilot pauses or stops with that generic reason. Either way nothing more is sent, but the usage-limit reason is not shown.
+- If ChatGPT ends a response with an error and the page then looks finished with a new response key, Autopilot treats it as a finished response and sends the next continuation: at most one per such response, bounded by the cycle limit.
+
+The second case does not meet "error states fail safely" for es-ES. Spanish notice texts must not be guessed (same rule as for button labels), so closing this needs either the exact Spanish texts when they appear, or an explicit owner decision to accept it as a documented M1 limitation.
+
+### Interface languages (L2)
+
+The definition of done requires validation "against the live ChatGPT site"; it does not require each interface language. M1 was validated live on es-ES. **Documented exception:** English (L2) and all other languages are not live-verified. English uses the original selectors, starting with the language-independent `data-testid`/`id`, but that is unverified live. README says so.
 
 ## 6. Prioritized roadmap
 
@@ -184,20 +217,19 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | Browser E2E runs in CI: separate `e2e` job (`npx playwright install --with-deps chromium`, `npm run e2e`); Playwright pinned as a dev dependency at 1.63.0, the version the tests were verified with. Existing `check` job unchanged. | [VERIFIED] locally; CI result recorded in the PR. | `npm run check` PASS (125); `npm run e2e` PASS with the project-local Playwright. |
 | 2026-11-05 | Live test matrix added to section 5: every live test with its expected behaviour (checked against the code; e.g. S3 pauses at the end of the countdown, not when you start typing), the DoD item it proves and its status. Owner is configuring `e2e` as a required check. Owner decision: no T7, no new features; priority is the remaining live M1 tests. | Documentation only. | `npm run check` PASS. |
 | 2026-11-05 | Live run 3 (owner report): S3, S4, D5, S5, S6 PASS. M1 reassessed item by item: 5 of 8 requirements met; open: D1/D3/D4/D6 (diagnostic-level, owner may accept as covered), N1–N3 (not observed live), S6 outcome detail, and P1. M1 **not** marked complete. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
+| 2026-11-05 | M1 coverage assessment. D4 and D6 are covered by S3/S4 (same signals in real use). D1 and D3 are indirectly covered for behaviour, with safe failure modes. N1–N3 coverage and reasons documented. L2 is a documented exception. **Found:** notice patterns are English-only, so on es-ES usage-limit and error notices are not recognized; requirement 4 stays open pending owner decision. README language note corrected. M1 still not complete (open: requirement 4 language gap, S6 outcome, P1). | Documentation only. | `npm run check` PASS. |
 
 ## 12. Exact next action
 
-M1 is not complete. To close it, the owner needs to:
+M1 is not complete. Open items:
 
-1. **P1** — during a countdown press Pause (nothing sent), then Resume (one continuation after a fresh delay); separately press Stop (nothing sent).
-2. **S6 detail** — say which safe outcome the minimised-browser test showed: the continuation was sent once, or Autopilot stopped with an error and removed the prompt.
-3. **D1/D3/D4/D6** — either accept them as covered by S1–S4 (record the decision here), or run them with diagnostics on.
-4. **N1–N3** — record them when they occur naturally, or explicitly accept them as untestable on demand (they stay covered by unit/E2E tests).
-5. Optional: say which interface language run 3 used; L2 (English) only if English support should be claimed as live-verified.
+1. **P1** (owner will run): Pause → nothing sent; Resume → one continuation after a fresh delay; Stop → nothing sent.
+2. **S6 outcome** (owner will clarify): continuation sent once, or stopped with an error and the prompt removed.
+3. **es-ES notice gap** (owner decision): either (a) when a usage-limit or error notice appears on the Spanish interface, copy its exact text, and a cloud session adds it to a localized notice-pattern table with a test (as done for button labels), or (b) explicitly accept the gap as a documented M1 limitation and move it to M2.
 
-After that: reassess M1 again; if complete, mark it and move to **M2 — Recovery and observability** (`docs/ROADMAP.md`), starting with T-items for an exportable text-free diagnostic report and clearer recoverable-vs-terminal states. Until then: no T7, no new features (owner decision, 2026-11-05).
+When all three are resolved: reassess M1; if complete, mark it and reassess the roadmap (candidate next milestone: **M2: Recovery and observability**). Until then: no T7, no new features.
 
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for the owner's answers above.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for P1, the S6 outcome and the notice-gap decision.
 
 ## 13. Update protocol
 

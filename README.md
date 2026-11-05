@@ -176,7 +176,9 @@ local fake ChatGPT page and drives the real panel.
   console); `docs/send-probe.js` captures a hand-typed baseline to compare.
 - Some ChatGPT interface languages identify the Send and Stop buttons only by
   a translated label. Recognized: English and Spanish (`Enviar`, `Detener`,
-  observed on es-ES). Other languages work when ChatGPT provides its
+  observed on es-ES). Live-verified: Spanish (es-ES) only. Usage-limit, login
+  and error notices are recognized by their English texts only; on other
+  interface languages they are not yet recognized. Other languages work when ChatGPT provides its
   language-independent `data-testid`/`id`; otherwise sending stops with "the
   send button did not become available" until the label is added
   (`docs/LIVE_VALIDATION.md` → "Adding a language").
