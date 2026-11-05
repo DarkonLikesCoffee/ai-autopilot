@@ -66,6 +66,35 @@ Status: [UNRESOLVED] In progress. Reassessed 2026-11-05 after the first successf
 
 Do not claim the milestone complete based only on fake-page tests.
 
+### Live test matrix (M1)
+
+Authoritative status of every live test. Procedure and capture steps: `docs/LIVE_VALIDATION.md` (same IDs). Run in a throwaway conversation with **Maximum cycles = 2 or 3**. Record each run with date, interface language and build, and set the status here only from an observed result: **VERIFIED** (observed as expected), **FAILED** (with a link to the fix), **NOT RUN**.
+
+| ID | Test (what you do) | Expected behaviour | DoD item | Status |
+|---|---|---|---|---|
+| D1 | Idle conversation with one finished answer; diagnostics on | `status: complete`; assistant messages counted once; response key ends in `id:…` | Detection | NOT RUN |
+| D2 | Send a question yourself and let it stream | Generating for the whole stream, then complete once it ends; log shows "ChatGPT is generating a response." then "Response complete…" | Detection | **VERIFIED** es-ES (Run 2: three responses detected) |
+| D3 | Compare `userMessageCount` before/after D2 | Increases by exactly 1 | Detection | NOT RUN |
+| D4 | Type a draft, do not send; diagnostics on | `composerHasText: true` | Composer protection | NOT RUN |
+| D5 | Regenerate the last answer while Autopilot runs | Generating, then complete; a regenerated answer with a new id gets **one** continuation, one with the same key gets none; never two | Generation restarts | NOT RUN |
+| D6 | Switch conversation in the sidebar; diagnostics on | Response key path changes to the new `/c/<id>` | Conversation switching | NOT RUN |
+| S1 | Start after an answer finished | After the delay exactly one continuation is sent and logged "Continuation N sent." | Sending exactly once | **VERIFIED** es-ES (Run 2) |
+| S2 | Let it run to the limit | Stops at the maximum; never two messages for one answer | Sending exactly once | **VERIFIED** es-ES (Run 2: stopped at 3) |
+| S3 | During the countdown, type into the message box | **At the end of the countdown** (not immediately): Paused, "The message box already contains text"; nothing sent; your text unchanged | Composer protection | NOT RUN |
+| S4 | During the countdown, switch to another conversation | Paused at once, "The tab switched to a different conversation"; nothing sent in either conversation | Conversation switching | NOT RUN |
+| S5 | During the countdown, open another tab in front (same window) | The continuation is still sent to the session's tab, once | Background tabs | NOT RUN |
+| S6 | During the countdown, minimise the window or switch to another window, for longer than the delay | Either sent once, or stopped with an error ("…suspended or throttled…" / "the send button did not become available") and the prompt removed; never sent twice or late. Record which | Background tabs | NOT RUN |
+| P1 | During the countdown, press Pause; later Resume. Separately, press Stop | Pause/Stop: nothing sent. Resume: one continuation after a fresh delay | User control | NOT RUN |
+| N1 | Usage-limit notice appears (when it happens naturally) | Error, "ChatGPT shows a usage limit"; nothing sent; not retried | Error states | NOT RUN (cannot be triggered on demand) |
+| N2 | Logged out / session expired notice (naturally, or log out in another tab) | Error, "ChatGPT asks you to log in"; nothing sent | Error states | NOT RUN |
+| N3 | ChatGPT error notice ("Something went wrong", network error) | Error, "ChatGPT shows an error"; nothing sent | Error states | NOT RUN (cannot be triggered on demand) |
+| R1 | Close the ChatGPT tab during the countdown | Paused, "The ChatGPT tab was closed"; nothing sent | Recovery | NOT RUN |
+| R2 | Quit and reopen the browser while running | Paused, "The browser or the extension restarted"; nothing sent until you resume | Recovery | NOT RUN |
+| L1 | Spanish interface (es-ES) | Send (`Enviar`) and Stop (`Detener`) recognized | Detection / sending | **VERIFIED** (Run 2) |
+| L2 | English interface | Same as S1/S2 | Detection / sending | NOT RUN |
+
+M1's definition of done needs, at minimum: D1–D6, S1–S4 and P1 VERIFIED; S5/S6 observed and their behaviour documented; N1–N3 VERIFIED when they occur, or explicitly accepted as untestable on demand by the owner (they are covered by unit and E2E tests).
+
 ## 6. Prioritized roadmap
 
 See `docs/ROADMAP.md` for milestone details. Current order:
@@ -151,13 +180,14 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-04 | Fixed the live es-ES send failure (root cause from the owner's diagnostics: no selector matched `button[aria-label="Enviar"]`). Localized label table; composer-form preference for the send button. Regression tests reproduce the live structure (and the old selector list reproduces the failure); E2E has an es-ES page variant, which fails on the previous build and passes now. | [VERIFIED] in tests below; owner to confirm on the live site. | `npm run check` PASS (125 unit tests); `npm run e2e` PASS. |
 | 2026-11-05 | **First successful live validation** (owner, ChatGPT web, es-ES, max cycles 3): completion detected, three continuations submitted and confirmed, ChatGPT answered each, stopped exactly at 3. Recorded as Run 2 in `docs/LIVE_VALIDATION.md` (activity log not included in the report). M1 reassessed: sending exactly once now verified live; composer protection, conversation switching, error notices and hidden tabs still lack live evidence. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-05 | Browser E2E runs in CI: separate `e2e` job (`npx playwright install --with-deps chromium`, `npm run e2e`); Playwright pinned as a dev dependency at 1.63.0, the version the tests were verified with. Existing `check` job unchanged. | [VERIFIED] locally; CI result recorded in the PR. | `npm run check` PASS (125); `npm run e2e` PASS with the project-local Playwright. |
+| 2026-11-05 | Live test matrix added to section 5: every live test with its expected behaviour (checked against the code; e.g. S3 pauses at the end of the countdown, not when you start typing), the DoD item it proves and its status. Owner is configuring `e2e` as a required check. Owner decision: no T7, no new features; priority is the remaining live M1 tests. | Documentation only. | `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **Owner decision:** add the new `e2e` CI job as a required status check in branch protection for `main` (GitHub → Settings → Branches/Rules), so auto-merge also waits for it. Until then it runs on every PR but does not block merging; Claude still waits for it to pass before treating a PR as verified.
-- **Owner (when convenient):** live rows S3, S4, D5, S5/S6 in `docs/LIVE_VALIDATION.md`.
-- **Cloud:** no further M1 task can be verified without live evidence. T7 stays deferred until M1 is established; T8/T9 depend on M1/M2. Do not start new features without new evidence or an owner decision.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — remaining M1 criteria need live evidence.
+- **Owner:** run the NOT RUN rows of the live test matrix (section 5) and report each result (and, for any failure, the Activity log plus the opt-in `Send step` / `Page detection` console entries).
+- **Cloud, when results arrive:** update the matrix, fix any FAILED row through the usual PR workflow (regression test from the captured structure), then reassess M1 against its definition of done.
+- **Not to do (owner decision, 2026-11-05):** T7 or any new feature until M1 is reassessed.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for the owner's live test results.
 
 ## 13. Update protocol
 
