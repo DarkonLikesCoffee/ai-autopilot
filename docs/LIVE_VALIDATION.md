@@ -191,6 +191,19 @@ The change adds three pauses (below). Re-run **S1–S2** on the es-ES interface
 to confirm the normal flow is not paused by a notice ChatGPT shows routinely,
 and record the result as Run 5.
 
+### Run 5 — reported 2026-11-05, es-ES — PASS (regression check after #18)
+
+- Interface: ChatGPT web, Spanish (`es-ES`). Build: `main` after #18 (the
+  exact commit was not stated). Maximum cycles: 3.
+- Reported results:
+
+  | Row | Result |
+  |---|---|
+  | R5 / S1 (one continuation per finished response) | PASS: three continuations sent successfully; no duplicate submissions |
+  | R5 / S2 (cycle limit) | PASS: stopped correctly at 3 |
+  | R5 (no unexpected pause from the new notice rules) | PASS: no unexpected pauses |
+- Activity log: not included in the report.
+
 ## Unrecognized notices (any language)
 
 Autopilot recognizes usage-limit, login and error notices by their **English**
