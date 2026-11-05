@@ -311,6 +311,12 @@ try {
   const limitState = await session();
   check('12: a usage limit stops Autopilot and nothing is sent', limitState.run === 'error' && (await messages(limitChat)).length === 1);
   check('the panel shows the error', (await panel.textContent('#pill')) === 'Error' && /usage limit/i.test(await panel.textContent('#f-error')));
+  const guidanceShown = await panel.evaluate(() => {
+    const g = document.getElementById('status-guidance');
+    return { hidden: g.hidden, text: g.textContent };
+  });
+  check('the panel says what to do: "Fix first" with the usage-limit action',
+    !guidanceShown.hidden && /^Fix first:/.test(guidanceShown.text) && /usage limit/i.test(guidanceShown.text), JSON.stringify(guidanceShown.text));
   await stop();
 
   // ---- 16: a failed submission is detected and handled safely ----

@@ -2,6 +2,15 @@
 
 import type { UiSnapshot } from '../shared/messages.ts';
 import { REASON_TEXT } from '../shared/session.ts';
+import { HALT_KIND_LABEL, haltGuidance, type HaltKind } from '../shared/guidance.ts';
+import type { SessionState } from '../shared/types.ts';
+
+/** Guidance is shown when paused or in error, and when stopped by the limit; not after your own Stop. */
+export function guidanceFor(session: SessionState): PanelView['guidance'] {
+  const showable = session.run === 'paused' || session.run === 'error' || (session.run === 'stopped' && session.reason === 'max_cycles');
+  const g = showable ? haltGuidance(session.reason) : null;
+  return g ? { label: HALT_KIND_LABEL[g.kind], kind: g.kind, action: g.action } : null;
+}
 import { isUnlimited } from '../shared/settings.ts';
 import type { ResponseStatus } from '../shared/types.ts';
 
@@ -26,6 +35,8 @@ export interface PanelView {
   countdown: string;
   lastContinuation: string;
   lastError: string;
+  /** After a halt: "Resume when ready" / "Fix first" / "Finished" and one line on what to do; null otherwise. */
+  guidance: { label: string; kind: HaltKind; action: string } | null;
 }
 
 export const GENERATION_TEXT: Record<ResponseStatus, string> = {
@@ -121,5 +132,6 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
     countdown,
     lastContinuation: formatClock(session.lastContinuationAt),
     lastError: halted && reasonDetail ? reasonDetail : '—',
+    guidance: guidanceFor(session),
   };
 }

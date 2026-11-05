@@ -15,6 +15,7 @@ const MARKUP = `
   <section class="card status-card">
     <p id="status-label" class="status-label">Stopped</p>
     <p id="status-detail" class="muted"></p>
+    <p id="status-guidance" class="guidance" hidden><strong id="guidance-kind"></strong> <span id="guidance-action"></span></p>
     <div class="controls">
       <button id="btn-start" class="primary" type="button">Start Autopilot</button>
       <button id="btn-pause" type="button">Pause</button>
@@ -171,6 +172,11 @@ function render(): void {
   pill.dataset.tone = view.tone;
   $('status-label').textContent = view.statusLabel;
   $('status-detail').textContent = view.detail;
+  const guidance = $('status-guidance');
+  guidance.hidden = !view.guidance;
+  guidance.dataset.kind = view.guidance?.kind ?? '';
+  $('guidance-kind').textContent = view.guidance ? `${view.guidance.label}:` : '';
+  $('guidance-action').textContent = view.guidance?.action ?? '';
   document.body.dataset.status = view.status;
 
   const show = (id: string, visible: boolean, enabled = visible) => {
