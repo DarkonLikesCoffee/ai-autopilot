@@ -70,7 +70,7 @@ Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
   continuation's time and the last error.
 - **Settings:** continuation prompt, delay before sending, completion
   confirmation delay, maximum cycles (or **Unlimited**) and notifications.
-- **Activity:** a short log of what Autopilot did and why.
+- **Activity:** a short log of what Autopilot did and why, and **Copy diagnostic report**: technical state only (settings without the prompt, session state, log, page signals, last send attempt). It contains no prompt, conversation, message or notice text, nor conversation ids or titles. Paste it into an issue when asking for help.
 
 **Unlimited** means no limit set by the extension. ChatGPT's own usage limits
 always apply: when ChatGPT shows a usage-limit notice, Autopilot stops and

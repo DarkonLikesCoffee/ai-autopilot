@@ -60,6 +60,11 @@ const MARKUP = `
   <details class="card" id="activity">
     <summary><h2>Activity</h2></summary>
     <ol id="log" class="log"></ol>
+    <div class="controls">
+      <button id="btn-report" type="button">Copy diagnostic report</button>
+    </div>
+    <p class="hint">Technical state only: no prompt, conversation or notice text. Paste it into an issue when asking for help.</p>
+    <textarea id="report-fallback" rows="8" readonly hidden aria-label="Diagnostic report"></textarea>
   </details>
 </main>`;
 
@@ -92,6 +97,31 @@ function showBanner(text: string, tone: 'info' | 'danger'): void {
   if (bannerTimer !== null) clearTimeout(bannerTimer);
   // Notes fade after a while; errors stay until the next action.
   bannerTimer = tone === 'info' && text ? setTimeout(() => { banner.hidden = true; }, 8000) : null;
+}
+
+async function copyReport(button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  try {
+    const response = await request({ type: 'GET_REPORT' });
+    if (!response.ok || !response.report) {
+      showBanner(response.ok ? 'The diagnostic report could not be created.' : response.error, 'danger');
+      return;
+    }
+    const fallback = $<HTMLTextAreaElement>('report-fallback');
+    try {
+      await navigator.clipboard.writeText(response.report);
+      fallback.hidden = true;
+      showBanner('Diagnostic report copied. It contains no conversation text.', 'info');
+    } catch {
+      // Clipboard not available here: show it for copying by hand.
+      fallback.value = response.report;
+      fallback.hidden = false;
+      fallback.select();
+      showBanner('Copy the diagnostic report below (Ctrl+C / Cmd+C).', 'info');
+    }
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function act(message: UiRequest, button?: HTMLButtonElement): Promise<UiResponse> {
@@ -197,6 +227,7 @@ function init(): void {
   $('btn-pause').addEventListener('click', (e) => void act({ type: 'PAUSE' }, e.currentTarget as HTMLButtonElement));
   $('btn-resume').addEventListener('click', (e) => void act({ type: 'RESUME' }, e.currentTarget as HTMLButtonElement));
   $('btn-stop').addEventListener('click', (e) => void act({ type: 'STOP' }, e.currentTarget as HTMLButtonElement));
+  $('btn-report').addEventListener('click', (e) => void copyReport(e.currentTarget as HTMLButtonElement));
 
   const form = $<HTMLFormElement>('settings-form');
   form.addEventListener('input', () => { settingsDirty = true; });

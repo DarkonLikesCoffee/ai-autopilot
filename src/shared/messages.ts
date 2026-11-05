@@ -12,7 +12,9 @@ export type UiRequest =
   | { type: 'RESUME' }
   | { type: 'STOP' }
   | { type: 'SAVE_SETTINGS'; settings: Settings }
-  | { type: 'RESET_SETTINGS' };
+  | { type: 'RESET_SETTINGS' }
+  /** A text-free diagnostic report (see report.ts), returned in UiResponse.report. */
+  | { type: 'GET_REPORT' };
 
 export interface TabInfo {
   tabId: number;
@@ -32,7 +34,7 @@ export interface UiSnapshot {
 }
 
 export type UiResponse =
-  | { ok: true; snapshot: UiSnapshot; note?: string }
+  | { ok: true; snapshot: UiSnapshot; note?: string; report?: string }
   | { ok: false; error: string; snapshot?: UiSnapshot };
 
 /** content -> background */
@@ -48,11 +50,13 @@ export type ContentReport =
 export type ContentCommand =
   | { type: 'GET_OBSERVATION' }
   | { type: 'SUBMIT'; key: string; request: SubmitRequest }
-  | { type: 'SCHEDULE_PING'; dueAt: number; now: number };
+  | { type: 'SCHEDULE_PING'; dueAt: number; now: number }
+  /** The content script's text-free record of its last send attempt, or null. */
+  | { type: 'GET_SEND_DIAGNOSTIC' };
 
 export type { SubmitRequest, SubmitResult };
 
-const UI_TYPES = new Set<UiRequest['type']>(['GET_SNAPSHOT', 'START', 'PAUSE', 'RESUME', 'STOP', 'SAVE_SETTINGS', 'RESET_SETTINGS']);
+const UI_TYPES = new Set<UiRequest['type']>(['GET_SNAPSHOT', 'START', 'PAUSE', 'RESUME', 'STOP', 'SAVE_SETTINGS', 'RESET_SETTINGS', 'GET_REPORT']);
 
 export function isUiRequest(value: unknown): value is UiRequest {
   if (!value || typeof value !== 'object') return false;

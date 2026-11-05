@@ -74,6 +74,13 @@ Turn diagnostics off afterwards:
 localStorage.removeItem('chatgpt-autopilot:debug')
 ```
 
+## Reporting a problem
+
+The quickest capture is **Copy diagnostic report** in the panel's Activity
+section, right after the problem. It contains technical state only (see
+README). Paste it into the issue. The console captures below give more detail
+when the report is not enough.
+
 ## When a continuation cannot be sent ("the send button did not become available")
 
 Capture two things from the same ChatGPT tab and paste both into an issue or
