@@ -97,3 +97,8 @@ test('a tab that did not answer and a default prompt are reported as such', () =
   assert.equal(r.tabs.sessionTabFound, false);
   assert.equal(r.tabs.activeTabIsSessionTab, false);
 });
+
+test('the report includes the guidance kind of the halt', () => {
+  const r = buildDiagnosticReport({ snapshot: snapshotWithSecrets(), observation: null, lastSend: null, environment: { extensionVersion: 'v', userAgent: 'u' } }) as any;
+  assert.equal(r.session.guidance, 'fix');
+});

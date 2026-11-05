@@ -8,6 +8,7 @@
 // the extension and contain no page text.
 
 import { DEFAULT_PROMPT } from './settings.ts';
+import { haltGuidance } from './guidance.ts';
 import { isSavedConversation } from './session.ts';
 import type { UiSnapshot } from './messages.ts';
 import type { PageObservation } from './types.ts';
@@ -71,6 +72,7 @@ export function buildDiagnosticReport(input: ReportInput): Record<string, unknow
       run: session.run,
       phase: session.phase,
       reason: session.reason,
+      guidance: haltGuidance(session.reason)?.kind ?? null,
       detail: session.detail,
       cycles: session.cycles,
       conversation: conversationKind(session.conversation),

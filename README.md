@@ -63,7 +63,8 @@ Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
 ## The control panel
 
 - **Status:** Running, Waiting for ChatGPT, Waiting before continuation, Paused,
-  Stopped or Error, with the reason when it is not running.
+  Stopped or Error, with the reason when it is not running and what to do:
+  *Resume when ready*, *Fix first* (with the one thing to fix) or *Finished*.
 - **Controls:** Start Autopilot, Pause / Resume, Stop.
 - **Session:** current conversation, continuations sent (of the maximum, or ∞),
   ChatGPT's current state, time until the next continuation, the last

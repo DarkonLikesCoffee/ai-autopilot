@@ -151,11 +151,11 @@ Why now (evidence from M1): every live investigation (runs 1–5) needed the own
 ### Definition of done (M2)
 
 - [x] **Diagnostic report export:** [VERIFIED] T10. **Copy diagnostic report** in the panel's Activity section. It contains the extension version, browser, settings (prompt as length and is-default only), session state with times relative to the report, the activity log, a fresh observation of the page (status and signals), and the last send-step record. Conversation ids, response keys and tab titles appear only as kinds or counts. `test/report.test.ts` plants SECRET in every user-content field and proves none reaches the report; E2E checks the real panel button.
-- [ ] **Recoverable vs terminal:** every halt reason is classified as "resume when ready" or "fix first", and the panel says which, with one line on what to do. A test covers every reason.
+- [x] **Recoverable vs terminal:** [VERIFIED] T11. Every halt reason is classified as *Resume when ready* (`user`), *Fix first* (13 reasons, each with one concrete action) or *Finished* (`max_cycles`). The panel shows it after a halt, but not while running or after your own Stop. `test/guidance.test.ts` pins every reason's kind; E2E checks the panel after a usage limit. The report includes the kind.
 - [x] **Stage history:** [VERIFIED] T5 (log of generation observed, completion, scheduling, attempt, confirmation, halts).
 - [x] **Recovery after worker suspension, browser restart and stale storage:** [VERIFIED] T6 and tests. Extension update: covered by the schema-version test (state restored as stopped); a live update was not observed.
 - [x] **Storage schema/version tests:** [VERIFIED] T6.
-- [ ] **Checks:** `npm run check` and CI `e2e` pass, with E2E covering the export. [VERIFIED] for T10; recheck after T11.
+- [x] **Checks:** [VERIFIED] `npm run check` (149 tests) and `npm run e2e` pass, covering the export and the guidance.
 - [ ] **Live:** the owner exports one report from the real ChatGPT tab and confirms it contains no conversation text.
 
 ## 6. Prioritized roadmap
@@ -181,7 +181,7 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
 - [ ] **T7 (P1, M3): Structured stop protocol.** **Blocked on an owner decision:** it requires reading the latest answer's text, which the privacy principle currently excludes. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
-- [ ] **T11 (P1, M2): Recoverable vs terminal.** Classify every halt reason; show "resume when ready" or "fix first" with one line of guidance in the panel; tests for every reason.
+- [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
 - [ ] **T9 (P3): UX and release polish.** Improve onboarding, accessibility, settings clarity and packaging after core reliability.
 
@@ -252,13 +252,20 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | Run 4 (owner): P1 PASS; S6 clarified (kept working, sent). Fixed the es-ES notice gap language-independently: unrecognized alert → pause (signal `unrecognizedNoticeFound`, all prechecks, the wait before clicking, detector reports); no generation within 60 s after a sent continuation → pause (`no_response`); a generation ending without a new answer → pause (`no_new_answer`). English detection unchanged. Research found no reliable Spanish notice texts, so none was added (D9). One T2 test now expects a pause instead of a silent continuation (ambiguous page). | [VERIFIED] in tests below; live Run 5 pending. | `npm run check` PASS (140 tests); `npm run e2e` PASS incl. a new es-ES unrecognized-notice scenario; the 7 new controller tests fail on the old state machine. |
 | 2026-11-05 | Run 5 (owner, es-ES): three continuations, no unexpected pauses, no duplicates, stopped at 3: R5 PASS. **M1 marked complete** after a final item-by-item reassessment (documented exceptions: English and other languages not live-verified; N1–N3 not triggered live). Roadmap reassessed: M2 is current (two items left: T10 report export, T11 recoverable vs terminal); M3 blocked on an owner decision about reading the latest answer's text. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-05 | T10 (M2): text-free diagnostic report export from the panel. | [VERIFIED] in tests below; live export by the owner pending (M2 DoD). | `npm run check` PASS (145 tests); `npm run e2e` PASS incl. the report button check. |
+| 2026-11-05 | T11 (M2): halt guidance (Resume when ready / Fix first / Finished, with one action each) in the panel and the report. All M2 code items done; M2 waits only for the owner's live report export. | [VERIFIED] in tests below. | `npm run check` PASS (149 tests); `npm run e2e` PASS incl. the guidance check. |
 
 ## 12. Exact next action
 
-- **Next task (cloud):** T11: recoverable vs terminal. First step: list every `HaltReason` with what the user must do before resuming. Add a pure classification ("resume when ready" / "fix first") with one line of guidance for each, show it in the panel, and test every reason.
-- **Owner (when convenient):** click **Copy diagnostic report** once in the real ChatGPT setup and confirm the pasted report contains no conversation text (last M2 live item).
-- **Owner decision (non-blocking):** M3 / T7: may the extension read the latest answer's text, only to find an explicit status marker?
-- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
+M2's code work is done (T10, T11). Two owner items decide what comes next:
+
+1. **Close M2 (owner, live):** in the real setup, pause Autopilot once (any reason), check that the panel's guidance line makes sense, then click **Copy diagnostic report**, paste it somewhere and confirm it contains no conversation text. Then M2 can be marked complete.
+2. **Choose the next milestone (owner decision).**
+   - **M3: stop protocol** (P1). Highest user value: stop when ChatGPT reports the milestone done or blocked. Needs a decision first: may the extension read the latest answer's text, only to look for an exact marker line such as `AUTOPILOT STATUS: COMPLETE`, never storing or sending it?
+   - **Otherwise M4: multiple sessions** (P2). Cloud work would start with a design proposal only (T8), no implementation.
+   - **M5: polish** (P3).
+
+- **Cloud, without new decisions:** nothing more on the roadmap is safe to start. Fixes for any problem the owner reports go through the usual PR workflow.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for the M2 live check and the M3 decision.
 
 ## 13. Update protocol
 

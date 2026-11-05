@@ -85,3 +85,6 @@ label.check { display: flex; align-items: center; gap: 6px; font-weight: 500; ma
 
 .log { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; max-height: 220px; overflow-y: auto; }
 .log time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.guidance { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+.guidance[data-kind="fix"] { border-color: #d4a72c; }
