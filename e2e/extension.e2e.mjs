@@ -5,7 +5,8 @@
 // with a stop button (including a brief flicker mid-stream), usage-limit
 // notices and in-app navigation. The test drives the real panel UI.
 //
-// Requires Playwright with Chromium (not part of CI). Run: npm run e2e
+// Requires Playwright with Chromium (a pinned dev dependency; runs in CI as the
+// "e2e" job). Run: npm run e2e
 // This does not prove compatibility with the live ChatGPT site; it proves the
 // extension's own behaviour end to end: detection, delay, insertion,
 // submission, verification, safeguards, messaging and storage.

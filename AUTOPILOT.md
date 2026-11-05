@@ -61,7 +61,7 @@ Status: [UNRESOLVED] In progress. Reassessed 2026-11-05 after the first successf
 - [ ] Conversation switching, usage-limit notices, login/error states and generation restarts fail safely. Unit/E2E tested; live S4/D5/D6 NOT RUN; usage-limit and login notices not observed live.
 - [ ] Background/hidden-tab behavior is understood and documented; unsupported conditions are detected and handled safely. Live S5/S6 NOT RUN (see T4).
 - [x] Unit tests, typecheck and build pass. [VERIFIED] `npm run check` on `main` (125 tests).
-- [x] Browser E2E coverage passes for all relevant deterministic scenarios. [VERIFIED] `npm run e2e` locally (fake page, incl. es-ES variant). [UNRESOLVED] E2E does not run in CI, so it is only as current as the last local run.
+- [x] Browser E2E coverage passes for all relevant deterministic scenarios. [VERIFIED] `npm run e2e` locally (fake page, incl. es-ES variant). E2E now also runs in CI as the `e2e` job (Playwright 1.63.0 pinned); [UNRESOLVED] whether `e2e` is a *required* check is a branch-protection setting only the owner can change.
 - [x] No known high-severity regression remains. [VERIFIED] none known as of 2026-11-05.
 
 Do not claim the milestone complete based only on fake-page tests.
@@ -150,12 +150,14 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-04 | Live-site send failure investigation: opt-in, text-free send-step diagnostics (`src/content/sendDiagnostics.ts`: send-selector matches with visibility/disabled/attributes, the button that would be chosen, buttons next to the message box, message-box state incl. ProseMirror placeholder and ChatGPT's hidden textarea, insertion method); console probe `docs/send-probe.js` for a hand-typed baseline; capture procedure in `docs/LIVE_VALIDATION.md`. Real-ProseMirror experiment rules out the generic editor-state hypothesis. No behavior change. | Root cause [UNRESOLVED] pending owner's capture. | `npm run check` PASS (113 unit tests); `npm run e2e` PASS incl. a new check that the diagnostics describe a failed send without the prompt. |
 | 2026-11-04 | Fixed the live es-ES send failure (root cause from the owner's diagnostics: no selector matched `button[aria-label="Enviar"]`). Localized label table; composer-form preference for the send button. Regression tests reproduce the live structure (and the old selector list reproduces the failure); E2E has an es-ES page variant, which fails on the previous build and passes now. | [VERIFIED] in tests below; owner to confirm on the live site. | `npm run check` PASS (125 unit tests); `npm run e2e` PASS. |
 | 2026-11-05 | **First successful live validation** (owner, ChatGPT web, es-ES, max cycles 3): completion detected, three continuations submitted and confirmed, ChatGPT answered each, stopped exactly at 3. Recorded as Run 2 in `docs/LIVE_VALIDATION.md` (activity log not included in the report). M1 reassessed: sending exactly once now verified live; composer protection, conversation switching, error notices and hidden tabs still lack live evidence. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
+| 2026-11-05 | Browser E2E runs in CI: separate `e2e` job (`npx playwright install --with-deps chromium`, `npm run e2e`); Playwright pinned as a dev dependency at 1.63.0, the version the tests were verified with. Existing `check` job unchanged. | [VERIFIED] locally; CI result recorded in the PR. | `npm run check` PASS (125); `npm run e2e` PASS with the project-local Playwright. |
 
 ## 12. Exact next action
 
-- **Next task (cloud):** run the browser E2E in CI, so every PR is checked against the real-Chromium scenarios (including es-ES) instead of relying on the last local run. Add Playwright as a pinned dev dependency and a separate CI job; do not change the existing `check` job.
-- **Owner (when convenient, not blocking cloud work):** live rows S3 (type during the countdown), S4 (switch conversation during the countdown), D5 (regenerate) and S5/S6 (background/minimised tab), recorded in `docs/LIVE_VALIDATION.md`.
-- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
+- **Owner decision:** add the new `e2e` CI job as a required status check in branch protection for `main` (GitHub → Settings → Branches/Rules), so auto-merge also waits for it. Until then it runs on every PR but does not block merging; Claude still waits for it to pass before treating a PR as verified.
+- **Owner (when convenient):** live rows S3, S4, D5, S5/S6 in `docs/LIVE_VALIDATION.md`.
+- **Cloud:** no further M1 task can be verified without live evidence. T7 stays deferred until M1 is established; T8/T9 depend on M1/M2. Do not start new features without new evidence or an owner decision.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — remaining M1 criteria need live evidence.
 
 ## 13. Update protocol
 
