@@ -164,7 +164,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 
 1. ~~**P0 — M1 reliability**~~ — **complete 2026-11-05.**
 2. **P1 — M2 recovery and observability (current).** Most of it was delivered during M1 (stage log T5, text-free diagnostics #3/#11, restart recovery and schema tests T6). Remaining: an exportable text-free diagnostic report, and a clear recoverable-vs-terminal distinction. See section 5b.
-3. **P1 — M3 stopping and control — needs an owner decision first.** Recognizing a CONTINUE/BLOCKED/COMPLETE marker requires reading the text of ChatGPT's latest answer, which the README and principle 10 currently rule out ("never reads … conversation text"). Not started until the owner decides whether, and how narrowly, the extension may read that text.
+3. **P1 — M3 stopping and control — next, chosen by the owner (2026-11-05).** Opt-in reading of the latest finished answer, only to match one of three exact marker lines; design in `docs/design/m3-stop-protocol.md`, awaiting approval.
 4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
 5. **P3 — M5 product polish:** onboarding, settings UX, accessibility, packaging and release process.
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
@@ -179,7 +179,7 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T4 (P0): Hidden/background tab behavior.** Done 2026-11-05: wall-clock bounds on the send step (#8); live S5/S6 passed (runs 3–4). Real frozen or discarded tabs were not observed; the bounds remain the safeguard.
 - [x] **T5 (P1): Diagnostics.** Done 2026-11-04. Audit of the activity log against the five stages: confirmed completion + scheduled continuation ("Response complete. Continuation N in Xs."), submission attempt ("Sending continuation N."), confirmed submission ("Continuation N sent.") were logged; **generation observed was never logged**, so a stalled run could not show whether ChatGPT was ever seen working. Added "ChatGPT is generating a response." once per response. A completion detected but not yet confirmed exists only in the content script (the panel shows the live ChatGPT state; the opt-in console diagnostics show it in detail); not added to the log, to avoid a new message type for a transient state. Test: a full cycle logs each stage once, in order. No conversation text in any message.
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
-- [ ] **T7 (P1, M3): Structured stop protocol.** **Blocked on an owner decision:** it requires reading the latest answer's text, which the privacy principle currently excludes. Status text is not proof that the work itself is correct.
+- [ ] **T7 (P1, M3): Structured stop protocol.** Owner chose M3 (2026-11-05) with strict privacy boundaries (R1–R8). **Design proposed:** `docs/design/m3-stop-protocol.md`. Implementation waits for the owner's approval of the design. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
 - [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
@@ -229,6 +229,7 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | D7 | Owner authorizes Claude to merge its own PRs. Auto-merge (squash) may be enabled while required checks are pending; GitHub merges only after they pass. Merge state is verified afterwards. | Owner instruction, 2026-11-04. GitHub enforces the required checks, so waiting adds nothing. | Active |
 | D8 | When the latest finished response changes key during the delay without a new generation, retarget the single pending continuation instead of dropping it. | Dropping it caused a silent stall; retargeting still sends at most one continuation per observed generation, never for an answered key, and re-checks the page before sending. | Active |
 | D9 | Do not add notice texts in other languages unless observed on the live page; make unrecognized notices, missing answers and answer-less generations pause, language-independently. | No reliable source for ChatGPT's Spanish notice texts (2026-11-05); guessed texts would either miss or misfire. The owner chose to fix the gap rather than accept it. | Active |
+| D10 | M3 is next. The extension may read the latest finished answer only when the owner-facing setting is on, only to match three exact marker lines, and never store, send or log the text. | Owner decision 2026-11-05 with requirements R1–R8; the privacy promise changes only for the opt-in setting. | Active (design proposed) |
 
 ## 11. Session history
 
@@ -253,19 +254,15 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | Run 5 (owner, es-ES): three continuations, no unexpected pauses, no duplicates, stopped at 3: R5 PASS. **M1 marked complete** after a final item-by-item reassessment (documented exceptions: English and other languages not live-verified; N1–N3 not triggered live). Roadmap reassessed: M2 is current (two items left: T10 report export, T11 recoverable vs terminal); M3 blocked on an owner decision about reading the latest answer's text. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-05 | T10 (M2): text-free diagnostic report export from the panel. | [VERIFIED] in tests below; live export by the owner pending (M2 DoD). | `npm run check` PASS (145 tests); `npm run e2e` PASS incl. the report button check. |
 | 2026-11-05 | T11 (M2): halt guidance (Resume when ready / Fix first / Finished, with one action each) in the panel and the report. All M2 code items done; M2 waits only for the owner's live report export. | [VERIFIED] in tests below. | `npm run check` PASS (149 tests); `npm run e2e` PASS incl. the guidance check. |
+| 2026-11-05 | Owner chose M3 (stop protocol) with strict privacy requirements. Technical design written and checked against the architecture and principles: `docs/design/m3-stop-protocol.md` (exact three-line grammar reused from the template, reading rules, outcomes, opt-in setting, privacy enforcement P1–P5 incl. a source-scan test, tests, risks). No implementation. | Design only. | `npm run check` PASS. |
 
 ## 12. Exact next action
 
-M2's code work is done (T10, T11). Two owner items decide what comes next:
+1. **Close M2 (owner, live):** with `main` at or after #21 installed, pause Autopilot once and check the guidance line; click **Copy diagnostic report** and confirm it contains no conversation text. Then a cloud session marks M2 complete.
+2. **Review the M3 design (owner):** `docs/design/m3-stop-protocol.md`. Decisions in it to confirm or change: (a) the three exact marker lines from the template; (b) a missing marker continues as today, while a malformed or ambiguous one pauses; (c) the setting is off by default; (d) quoted text (code, pre, blockquote) is excluded and the marker must be the last line.
+3. **After approval (cloud):** implement M3 in focused PRs: parser + privacy tests first, then the state machine and setting, then E2E and docs.
 
-1. **Close M2 (owner, live):** in the real setup, pause Autopilot once (any reason), check that the panel's guidance line makes sense, then click **Copy diagnostic report**, paste it somewhere and confirm it contains no conversation text. Then M2 can be marked complete.
-2. **Choose the next milestone (owner decision).**
-   - **M3: stop protocol** (P1). Highest user value: stop when ChatGPT reports the milestone done or blocked. Needs a decision first: may the extension read the latest answer's text, only to look for an exact marker line such as `AUTOPILOT STATUS: COMPLETE`, never storing or sending it?
-   - **Otherwise M4: multiple sessions** (P2). Cloud work would start with a design proposal only (T8), no implementation.
-   - **M5: polish** (P3).
-
-- **Cloud, without new decisions:** nothing more on the roadmap is safe to start. Fixes for any problem the owner reports go through the usual PR workflow.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for the M2 live check and the M3 decision.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for the M2 live checks and the M3 design review.
 
 ## 13. Update protocol
 
