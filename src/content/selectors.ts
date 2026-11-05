@@ -28,6 +28,12 @@ export interface SelectorConfig {
   messageIdAttribute: string;
   /** Regions where ChatGPT shows errors and limit notices. Text inside conversation messages is excluded. */
   noticeRegion: string[];
+  /**
+   * Alert-type regions: a visible one outside the conversation whose text matches
+   * no known pattern is an unrecognized notice (Autopilot pauses). Narrower than
+   * noticeRegion on purpose: role="status" and toasts are routine (e.g. "Copied").
+   */
+  alertRegion: string[];
   /** Any element matching this is a conversation message; notices inside it are ignored. */
   messageContainer: string;
 }
@@ -75,6 +81,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     '.text-token-text-error',
     '[class*="border-token-surface-error"]',
   ],
+  alertRegion: ['[role="alert"]', '.text-token-text-error', '[class*="border-token-surface-error"]', '[data-testid*="error"]'],
   messageContainer: '[data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
 };
 

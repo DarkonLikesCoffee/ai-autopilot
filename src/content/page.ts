@@ -11,6 +11,8 @@ export interface ElementLike {
   getAttribute(name: string): string | null;
   closest(selector: string): unknown;
   checkVisibility?: () => boolean;
+  /** Present on real elements; used to skip visually hidden (1px) screen-reader regions. */
+  getBoundingClientRect?: () => { width: number; height: number };
   /** Present on real elements; used only to find a message id on a nested element. */
   querySelectorAll?(selector: string): ArrayLike<ElementLike>;
 }
@@ -106,6 +108,38 @@ export function messageId(element: ElementLike | undefined, attribute: string): 
   }
 }
 
+/** Rendered on screen: visible and larger than the 1px boxes used for screen-reader-only text. */
+function isRendered(element: ElementLike): boolean {
+  if (!isVisible(element)) return false;
+  if (typeof element.getBoundingClientRect !== 'function') return true;
+  try {
+    const box = element.getBoundingClientRect();
+    return box.width > 1 && box.height > 1;
+  } catch {
+    return true;
+  }
+}
+
+const KNOWN_NOTICE_PATTERNS = (): RegExp[] => [...USAGE_LIMIT_PATTERNS, ...AUTH_PATTERNS, ...ERROR_PATTERNS];
+
+/**
+ * A rendered alert-type notice outside the conversation that matches no known
+ * text. Unknown notices (any language) must never let a continuation go out.
+ * The text is only tested and discarded, never kept.
+ */
+export function unrecognizedNotice(root: QueryRoot, selectors: SelectorConfig): boolean {
+  const known = KNOWN_NOTICE_PATTERNS();
+  for (const element of findVisible(root, selectors.alertRegion)) {
+    if (!isRendered(element) || element.closest(selectors.messageContainer)) continue;
+    const text = (element.textContent ?? '').trim();
+    if (!text) continue;
+    // A long text is not a recognizable notice, but it is still an alert: unknown.
+    if (text.length <= MAX_NOTICE_LENGTH && known.some((re) => re.test(text))) continue;
+    return true;
+  }
+  return false;
+}
+
 /** Whether an element has text, without keeping the text. */
 export function hasText(element: ElementLike | undefined): boolean {
   if (!element) return false;
@@ -129,6 +163,7 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       errorNoticeFound: noticeMatches(root, selectors, ERROR_PATTERNS),
       usageLimitNoticeFound: noticeMatches(root, selectors, USAGE_LIMIT_PATTERNS),
       authRequired: noticeMatches(root, selectors, AUTH_PATTERNS) || (composers.length === 0 && findVisible(root, selectors.loginControl).length > 0),
+      unrecognizedNoticeFound: unrecognizedNotice(root, selectors),
     },
     lastMessageId: messageId(last, selectors.messageIdAttribute),
   };

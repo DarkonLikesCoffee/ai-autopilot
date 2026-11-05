@@ -174,6 +174,40 @@ was not run.
   | D1, D3, D4, D6, P1, N1–N3, R1–R2, L2 | NOT RUN (not part of this report) |
 - Activity log: not included in the report.
 
+### Run 4 — reported 2026-11-05 — PASS
+
+- Interface language and build: not stated (runs 2–3 were es-ES).
+- Reported results:
+
+  | Row | Result |
+  |---|---|
+  | P1 (Pause, Resume, Stop during the countdown) | PASS |
+  | S6 (minimised browser, from run 3) | Clarified: Autopilot kept working normally, i.e. the continuation was sent (once) |
+- Activity log: not included in the report.
+
+### Needed after the notice fail-safe change
+
+The change adds three pauses (below). Re-run **S1–S2** on the es-ES interface
+to confirm the normal flow is not paused by a notice ChatGPT shows routinely,
+and record the result as Run 5.
+
+## Unrecognized notices (any language)
+
+Autopilot recognizes usage-limit, login and error notices by their **English**
+texts. No Spanish notice text could be verified from a reliable source
+(2026-11-05), so none is matched by text. Instead:
+
+| Situation | What Autopilot does |
+|---|---|
+| A visible alert (`role="alert"` or error styling) outside the conversation whose text it does not recognize | Paused: "ChatGPT shows a notice Autopilot does not recognize"; nothing sent |
+| A continuation was sent but ChatGPT does not start answering within 60 s | Paused: "ChatGPT did not start answering the continuation"; nothing more sent |
+| ChatGPT generated, but no new answer is visible afterwards | Paused: "ChatGPT finished without a new answer"; nothing sent |
+
+**When such a pause shows a real notice on a non-English interface,** copy
+the notice's exact text from the page and its interface language into an
+issue. Only texts observed this way are added to the notice patterns (with a
+test), so that notice can be shown with its proper reason.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

@@ -168,6 +168,7 @@ export function precheck(doc: Document, url: string, selectors: SelectorConfig, 
   if (observation.status === 'usage_limit') return 'usage_limit';
   if (observation.signals.authRequired) return 'auth_required';
   if (observation.status === 'generating') return 'generating';
+  if (observation.signals.unrecognizedNoticeFound) return 'unrecognized_notice';
   if (observation.signals.composerHasText) return 'composer_has_text';
   if (observation.status !== 'complete') return 'not_complete';
   if (observation.responseKey !== request.expectedKey) return 'response_changed';
@@ -210,6 +211,11 @@ function pageChangedWhileWaiting(doc: Document, url: string, selectors: Selector
   if (observation.status === 'generating' || observation.status === 'usage_limit') {
     if (!removePrompt(doc, typedInto, request.text)) return { outcome: 'refused', reason: 'composer_has_text' };
     return { outcome: 'refused', reason: observation.status === 'usage_limit' ? 'usage_limit' : 'generating' };
+  }
+  if (observation.signals.unrecognizedNoticeFound || observation.status === 'error') {
+    // A notice appeared while the prompt waited: never click.
+    if (!removePrompt(doc, typedInto, request.text)) return { outcome: 'refused', reason: 'composer_has_text' };
+    return { outcome: 'refused', reason: observation.signals.unrecognizedNoticeFound ? 'unrecognized_notice' : observation.signals.authRequired ? 'auth_required' : 'not_complete' };
   }
   return null;
 }

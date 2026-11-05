@@ -536,11 +536,15 @@ test('during the delay, an already answered response becoming the latest again c
   await h.see(obs('complete', key('m1')));
   await h.advance(5000);
   assert.equal(h.submits.length, 1, 'nothing is sent while the page shows the answered response');
-  assert.equal((await h.session()).run, 'running');
-  // The page shows m2 again: it is continued once, not left waiting forever.
-  await h.see(obs('complete', key('m2')));
+  // The page no longer shows which answer is the latest: pause rather than guess (never wait silently).
+  const s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'no_new_answer');
+  // Once the page shows m2 again, Resume continues it exactly once.
+  h.page.observation = obs('complete', key('m2'));
+  ok(await h.ui('RESUME'));
   await h.advance(5000);
-  assert.deepEqual(h.submits.map((s) => s.key), [key('m1'), key('m2')]);
+  assert.deepEqual(h.submits.map((x) => x.key), [key('m1'), key('m2')]);
   await h.advance(60_000);
   assert.equal(h.submits.length, 2);
 });
@@ -690,4 +694,117 @@ test('a result that arrives after the worker restarted during the attempt is sti
   s = await h.session();
   assert.equal(s.run, 'running');
   assert.equal(s.phase, 'watching');
+});
+
+// --- Notices in any language fail safely; uncertain answers pause ---
+
+const UNKNOWN_NOTICE = { unrecognizedNoticeFound: true } as const;
+
+test('a finished-looking page with an unrecognized notice is never continued: Autopilot pauses', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.see(obs('generating', key('m1')));
+  await h.see(obs('complete', key('m1'), CONVO, UNKNOWN_NOTICE));
+  const s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'unrecognized_notice');
+  assert.equal(h.scheduled.length, 0, 'no continuation was even scheduled');
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 0);
+});
+
+test('an unrecognized notice that appears during the delay stops the continuation', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  // The page's report may not have arrived yet; the check before sending sees it.
+  h.page.observation = obs('complete', key('m1'), CONVO, UNKNOWN_NOTICE);
+  await h.advance(5000);
+  assert.equal(h.submits.length, 0);
+  const s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'unrecognized_notice');
+});
+
+test('a continuation that ChatGPT never starts answering pauses instead of waiting forever', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  // Sent, but a notice appears instead of a response: no generation.
+  h.page.onSubmit = () => {
+    h.page.observation = obs('complete', key('m1'));
+    return { outcome: 'submitted', sawGenerating: false };
+  };
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  let s = await h.session();
+  assert.equal(s.run, 'running');
+  assert.ok(s.awaitingResponseSince !== null);
+  assert.equal(h.scheduled.at(-1), s.awaitingResponseSince! + 60_000, 'a check is scheduled for when an answer should have started');
+  await h.advance(59_000);
+  assert.equal((await h.session()).run, 'running');
+  await h.advance(1_000);
+  s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'no_response');
+  await h.advance(120_000);
+  assert.equal(h.submits.length, 1, 'nothing more is sent');
+});
+
+test('a continuation that ChatGPT starts answering a little late is fine', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  h.page.onSubmit = () => ({ outcome: 'submitted', sawGenerating: false });
+  await h.advance(5000);
+  await h.advance(20_000);
+  await h.respond('m2');
+  assert.equal((await h.session()).awaitingResponseSince, null);
+  await h.advance(5000);
+  assert.equal(h.submits.length, 2);
+  assert.equal((await h.session()).run, 'running');
+});
+
+test('the wait for an answer is picked up again after a worker restart', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  h.page.onSubmit = () => ({ outcome: 'submitted', sawGenerating: false });
+  await h.advance(5000);
+  const since = (await h.session()).awaitingResponseSince!;
+  h.restartWorker();
+  await h.controller.handleWake();
+  assert.equal(h.scheduled.at(-1), since + 60_000);
+  h.clock.now = since + 60_000;
+  await h.controller.handleDue();
+  assert.equal((await h.session()).reason, 'no_response');
+});
+
+test('a generation that ends without a new answer pauses (no silent wait, no continuation)', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  // ChatGPT generates, then the page shows only the answered response again (e.g. an error ended it).
+  await h.see(obs('generating', key('m1')));
+  await h.see(obs('complete', key('m1')));
+  const s = await h.session();
+  assert.equal(s.run, 'paused');
+  assert.equal(s.reason, 'no_new_answer');
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 1);
+});
+
+test('English usage-limit and error notices keep stopping with their exact reasons', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.see(obs('generating', key('m1')));
+  await h.see(obs('usage_limit', key('m1')));
+  assert.equal((await h.session()).reason, 'usage_limit');
+  const g = harness();
+  ok(await g.ui('START'));
+  await g.see(obs('generating', key('m1')));
+  await g.see(obs('error', key('m1')));
+  assert.equal((await g.session()).reason, 'page_error');
 });

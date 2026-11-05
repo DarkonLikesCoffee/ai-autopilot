@@ -41,7 +41,14 @@ export const DEFAULT_SETTLE_MS = 3000;
 export const DEFAULT_COALESCE_MS = 150;
 
 export function sameReport(a: PageObservation | null, b: PageObservation): boolean {
-  return !!a && a.status === b.status && a.responseKey === b.responseKey && a.url === b.url;
+  return (
+    !!a &&
+    a.status === b.status &&
+    a.responseKey === b.responseKey &&
+    a.url === b.url &&
+    // An unrecognized notice appearing or going away is reported at once.
+    a.signals.unrecognizedNoticeFound === b.signals.unrecognizedNoticeFound
+  );
 }
 
 export function createDetector(options: DetectorOptions): Detector {

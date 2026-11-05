@@ -19,6 +19,8 @@ export const MAX_LOG_ENTRIES = 40;
 export const SUBMIT_TIMEOUT_MS = 60_000;
 /** A due time this close is treated as reached (timers can fire a little early). */
 export const DUE_TOLERANCE_MS = 250;
+/** After a continuation is confirmed sent, ChatGPT must be seen generating within this time, or Autopilot pauses. */
+export const NO_RESPONSE_MS = 60_000;
 
 export type PrecheckFailure =
   | 'generating'
@@ -28,7 +30,8 @@ export type PrecheckFailure =
   | 'conversation_changed'
   | 'tab_unreachable'
   | 'usage_limit'
-  | 'auth_required';
+  | 'auth_required'
+  | 'unrecognized_notice';
 
 export type SubmitOutcome = 'submitted' | 'not_submitted' | 'uncertain';
 
@@ -81,6 +84,7 @@ export function initialSession(): SessionState {
     answeredKeys: [],
     lastStatus: 'unknown',
     lastContinuationAt: null,
+    awaitingResponseSince: null,
     startedAt: null,
     updatedAt: null,
     log: [],
@@ -115,6 +119,9 @@ export const REASON_TEXT: Record<HaltReason, string> = {
   submit_failed: 'The continuation could not be sent',
   submission_uncertain: 'It is unclear whether the last continuation was sent',
   tab_unreachable: 'The ChatGPT tab did not respond',
+  unrecognized_notice: 'ChatGPT shows a notice Autopilot does not recognize (check the page; nothing was sent)',
+  no_response: 'ChatGPT did not start answering the continuation',
+  no_new_answer: 'ChatGPT finished without a new answer',
 };
 
 function log(state: SessionState, now: number, message: string): SessionState {
@@ -196,6 +203,7 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
     case 'error':
       return observation.signals.authRequired ? halt(next, 'error', 'auth_required', now) : halt(next, 'error', 'page_error', now);
     case 'generating':
+      next.awaitingResponseSince = null;
       if (!state.generationSeen && state.phase === 'watching') {
         // Once per response: the log then shows that ChatGPT was seen working.
         next = log(next, now, 'ChatGPT is generating a response.');
@@ -209,6 +217,10 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
       return { state: next, effects: [] };
     case 'complete': {
       const key = observation.responseKey;
+      if (observation.signals.unrecognizedNoticeFound && state.phase !== 'submitting') {
+        // A notice is never a finished answer, in any language.
+        return halt(next, 'paused', 'unrecognized_notice', now);
+      }
       if (state.phase === 'delay' && key !== null && key !== state.pendingKey && !state.answeredKeys.includes(key)) {
         // The finished response got a different key without a new generation (a late
         // message id, a re-render). It is still the one response this delay is for:
@@ -217,6 +229,12 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
         const dueAt = now + settings.delaySeconds * 1000;
         next = log({ ...next, pendingKey: key, dueAt }, now, `The finished response was updated on the page; continuation ${state.cycles + 1} in ${settings.delaySeconds}s.`);
         return { state: next, effects: [{ type: 'schedule', dueAt }] };
+      }
+      if (state.phase === 'watching' && state.generationSeen && key !== null && state.answeredKeys.includes(key)) {
+        // ChatGPT generated, but the latest finished response is one already answered:
+        // no new answer is visible (for example the generation ended in an error).
+        // It cannot be told whether ChatGPT answered, so pause rather than guess.
+        return halt(next, 'paused', 'no_new_answer', now);
       }
       if (state.phase !== 'watching' || !state.generationSeen || key === null || state.answeredKeys.includes(key)) {
         return { state: next, effects: [] };
@@ -260,6 +278,16 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       return observe(state, event);
 
     case 'DUE':
+      if (
+        state.run === 'running' &&
+        state.phase === 'watching' &&
+        !state.generationSeen &&
+        state.awaitingResponseSince !== null &&
+        now >= state.awaitingResponseSince + NO_RESPONSE_MS - DUE_TOLERANCE_MS
+      ) {
+        // A continuation went out but ChatGPT never started answering (a notice instead of a response?).
+        return halt({ ...state, awaitingResponseSince: null }, 'paused', 'no_response', now, `nothing was generated within ${NO_RESPONSE_MS / 1000}s; nothing more was sent`);
+      }
       if (state.run === 'running' && state.phase === 'submitting' && state.submitStartedAt !== null && now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
         // Scheduled by WAKE: the attempt's result never arrived. Its response stays
         // answered; a result that still arrives is applied (as after any pause).
@@ -295,6 +323,8 @@ export function transition(state: SessionState, event: SessionEvent): Transition
           return halt(state, 'error', 'usage_limit', now, 'Nothing will be sent until you resume.');
         case 'auth_required':
           return halt(state, 'error', 'auth_required', now);
+        case 'unrecognized_notice':
+          return halt(state, 'paused', 'unrecognized_notice', now);
       }
       return { state, effects: [] };
     }
@@ -342,8 +372,11 @@ export function transition(state: SessionState, event: SessionEvent): Transition
           cycles: state.cycles + 1,
           generationSeen: event.sawGenerating,
           lastContinuationAt: now,
+          awaitingResponseSince: event.sawGenerating ? null : now,
         };
-        return { state: log(next, now, `Continuation ${next.cycles} sent.`), effects: [] };
+        // If ChatGPT is not yet generating, check again once it should have started.
+        const effects: SessionEffect[] = event.sawGenerating ? [] : [{ type: 'schedule', dueAt: now + NO_RESPONSE_MS }];
+        return { state: log(next, now, `Continuation ${next.cycles} sent.`), effects };
       }
       const base: SessionState = { ...state, phase: 'watching', pendingKey: null, submitStartedAt: null };
       if (event.outcome === 'not_submitted') return halt(base, 'error', 'submit_failed', now, event.detail);
@@ -417,6 +450,9 @@ export function transition(state: SessionState, event: SessionEvent): Transition
         if (now >= state.dueAt - DUE_TOLERANCE_MS && state.pendingKey !== null) return { state, effects: [{ type: 'attempt', key: state.pendingKey }] };
         return { state, effects: [{ type: 'schedule', dueAt: state.dueAt }] };
       }
+      if (state.phase === 'watching' && !state.generationSeen && state.awaitingResponseSince !== null) {
+        return { state, effects: [{ type: 'schedule', dueAt: state.awaitingResponseSince + NO_RESPONSE_MS }] };
+      }
       return { state, effects: [] };
     }
   }
@@ -464,6 +500,7 @@ export function normalizeSession(raw: unknown): SessionState {
     answeredKeys,
     lastStatus: oneOf(r.lastStatus, STATUSES) ? r.lastStatus : 'unknown',
     lastContinuationAt: numOrNull(r.lastContinuationAt),
+    awaitingResponseSince: numOrNull(r.awaitingResponseSince),
     startedAt: numOrNull(r.startedAt),
     updatedAt: numOrNull(r.updatedAt),
     log,

@@ -68,6 +68,7 @@ export function signals(overrides: Partial<PageSignals> = {}): PageSignals {
     errorNoticeFound: false,
     usageLimitNoticeFound: false,
     authRequired: false,
+    unrecognizedNoticeFound: false,
     ...overrides,
   };
 }
