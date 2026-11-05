@@ -10,6 +10,8 @@ import { conversationPath, transition, type PrecheckFailure, type SessionEffect,
 import { defaultSettings, normalizeSettings, validateSettings } from '../shared/settings.ts';
 import { createSerialQueue, loadSession, loadSettings, saveSession, saveSettings, type StorageAreaLike } from '../shared/storage.ts';
 import type { PageObservation, SessionState, Settings } from '../shared/types.ts';
+import { formatDiagnosticReport } from '../shared/report.ts';
+import type { SendDiagnostic } from '../content/sendDiagnostics.ts';
 
 export interface TabAccess {
   /** The active tab of the focused window, if it shows ChatGPT. */
@@ -24,6 +26,8 @@ export interface TabAccess {
   submit(tabId: number, key: string, request: SubmitRequest): Promise<SubmitResult | null>;
   /** Asks the content script to ping back when the delay ends (a backup for the worker's own timers). */
   schedulePing(tabId: number, dueAt: number, now: number): Promise<void>;
+  /** The content script's text-free record of its last send attempt; null if none or no answer. */
+  getSendDiagnostic?(tabId: number): Promise<SendDiagnostic | null>;
 }
 
 export interface Scheduler {
@@ -45,6 +49,8 @@ export interface ControllerDeps {
   onStateChange?(state: SessionState): Promise<void> | void;
   now(): number;
   log: Logger;
+  /** For the diagnostic report. */
+  environment?(): { extensionVersion: string; userAgent: string };
 }
 
 export interface Controller {
@@ -177,6 +183,16 @@ export function createController(deps: ControllerDeps): Controller {
     return next;
   }
 
+  async function report(): Promise<string> {
+    const { settings, session } = await load();
+    const snap = await snapshot(settings, session);
+    const tabId = session.tabId ?? snap.activeTab?.tabId ?? null;
+    const observation = tabId === null ? null : await safe(tabs.getObservation(tabId), null);
+    const lastSend = tabId === null || !tabs.getSendDiagnostic ? null : await safe(tabs.getSendDiagnostic(tabId), null);
+    const environment = deps.environment?.() ?? { extensionVersion: 'unknown', userAgent: 'unknown' };
+    return formatDiagnosticReport({ snapshot: snap, observation, lastSend, environment });
+  }
+
   async function load(): Promise<{ settings: Settings; session: SessionState }> {
     const [settings, session] = await Promise.all([loadSettings(storage), loadSession(storage)]);
     return { settings, session };
@@ -284,6 +300,15 @@ export function createController(deps: ControllerDeps): Controller {
   return {
     handleUi(request) {
       // A snapshot only reads, so it does not wait behind a submission attempt in the queue.
+      if (request.type === 'GET_REPORT') {
+        // Reads only, like a snapshot; never waits behind a submission attempt.
+        return report().then(
+          (text): Promise<UiResponse> => load().then(({ settings, session }) => snapshot(settings, session)).then((snap) => ({ ok: true, snapshot: snap, report: text })),
+        ).catch((error: unknown): UiResponse => {
+          log.error('Report failed', error);
+          return { ok: false, error: 'The diagnostic report could not be created.' };
+        });
+      }
       if (request.type === 'GET_SNAPSHOT') {
         return load().then(({ settings, session }) => snapshot(settings, session)).then(
           (snap): UiResponse => ({ ok: true, snapshot: snap }),

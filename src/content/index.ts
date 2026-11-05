@@ -58,6 +58,8 @@ function start(): void {
     (diagnostic) => console.info(`[ChatGPT Autopilot] Send step: ${diagnostic.stage}`, diagnostic),
     (diagnostic) => JSON.stringify({ ...diagnostic, elapsedMs: 0 }),
   );
+  /** The last send-step record, for the diagnostic report (GET_SEND_DIAGNOSTIC). */
+  let lastSendDiagnostic: SendDiagnostic | null = null;
   const readPage = () => {
     const observation = observePage(document, location.href, DEFAULT_SELECTORS);
     if (diagnosticsEnabled(safeLocalStorage())) logDiagnostic(collectDiagnostic(document, observation));
@@ -108,7 +110,14 @@ function start(): void {
         ...DEFAULT_SUBMIT_TIMING,
         sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
         now: () => Date.now(),
-        diagnose: diagnosticsEnabled(safeLocalStorage()) ? logSendDiagnostic : undefined,
+        // Always recorded (text-free) for the diagnostic report; logged to the console only when diagnostics are on.
+        diagnose: (() => {
+          const logging = diagnosticsEnabled(safeLocalStorage());
+          return (diagnostic: SendDiagnostic) => {
+            lastSendDiagnostic = diagnostic;
+            if (logging) logSendDiagnostic(diagnostic);
+          };
+        })(),
       });
       if (result.outcome !== 'refused') sentFor.add(key);
       return result;
@@ -132,6 +141,9 @@ function start(): void {
           send({ type: 'SUBMIT_REPORT', key: message.key, result });
         });
         return true; // answered asynchronously
+      case 'GET_SEND_DIAGNOSTIC':
+        sendResponse(lastSendDiagnostic);
+        return false;
       case 'SCHEDULE_PING': {
         if (typeof message.dueAt !== 'number' || typeof message.now !== 'number') return false;
         if (pingTimer !== null) window.clearTimeout(pingTimer);

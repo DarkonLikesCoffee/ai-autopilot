@@ -335,6 +335,28 @@ try {
     stages.includes('typed') && stages.includes('clicking_send') && stages.includes('not_confirmed') && !serialized.includes(PROMPT) && !serialized.includes('Broken send test'),
     `stages=${stages.join(',')}`);
   await brokenChat.evaluate(() => localStorage.removeItem('chatgpt-autopilot:debug'));
+
+  // ---- Diagnostic report (M2, T10): one click in the panel, technical state only ----
+  await panel.bringToFront();
+  // Headless Chromium cannot read the clipboard back; record what the panel writes to it.
+  await panel.evaluate(() => {
+    window.__copied = '';
+    navigator.clipboard.writeText = async (text) => { window.__copied = text; };
+  });
+  await panel.click('#activity summary');
+  await panel.click('#btn-report');
+  await panel.waitForFunction(() => /Diagnostic report copied|Copy the diagnostic report below/.test(document.getElementById('banner').textContent || ''), null, { timeout: 10000 });
+  const reportText = await panel.evaluate(async () => {
+    const box = document.getElementById('report-fallback');
+    if (!box.hidden && box.value) return box.value;
+    return window.__copied;
+  });
+  let report = null;
+  try { report = JSON.parse(reportText); } catch { /* checked below */ }
+  check('diagnostic report: valid, describes the failed send, contains no prompt or message text',
+    !!report && report.session?.reason === 'submit_failed' && report.page?.answered === true && typeof report.lastSendAttempt?.stage === 'string' &&
+      !reportText.includes(PROMPT) && !reportText.includes('Broken send test') && !reportText.includes('e2e-broken'),
+    report ? `stage=${report.lastSendAttempt?.stage}` : `unparsable (${reportText.length} chars)`);
   await stop();
 
   // ---- 17: an unknown page state does not trigger submission ----

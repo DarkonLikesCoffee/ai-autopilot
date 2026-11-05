@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createController, type NotifyRequest, type TabAccess } from '../src/background/controller.ts';
 import type { SubmitRequest, SubmitResult } from '../src/content/composer.ts';
+import type { SendDiagnostic } from '../src/content/sendDiagnostics.ts';
 import { createLogger } from '../src/shared/logger.ts';
 import type { UiResponse } from '../src/shared/messages.ts';
 import { SESSION_KEY } from '../src/shared/storage.ts';
@@ -20,6 +21,8 @@ interface Page {
   active: boolean;
   reachable: boolean;
   observation: PageObservation;
+  /** The content script's last send-step record, for the diagnostic report. */
+  lastSend?: SendDiagnostic | null;
   /** What the page does when asked to send; defaults to a successful send. */
   onSubmit: (request: SubmitRequest) => SubmitResult | null;
 }
@@ -48,6 +51,7 @@ function harness(storage = new MemoryStorage(), settings: Partial<Settings> = {}
       return id === TAB ? page.onSubmit(request) : null;
     },
     schedulePing: async () => undefined,
+    getSendDiagnostic: async (id) => (id === TAB && page.open && page.reachable ? page.lastSend ?? null : null),
   };
   const make = () => createController({
     storage,
@@ -807,4 +811,35 @@ test('English usage-limit and error notices keep stopping with their exact reaso
   await g.see(obs('generating', key('m1')));
   await g.see(obs('error', key('m1')));
   assert.equal((await g.session()).reason, 'page_error');
+});
+
+// --- T10: diagnostic report ---
+
+test('the diagnostic report is read-only: it reports the live page and the last send attempt and changes nothing', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  h.page.lastSend = { stage: 'clicking_send', elapsedMs: 120, insertion: { method: 'execCommand', execCommandReturned: true }, composer: null, sendSelectors: [], chosen: null, nearbyButtons: [] };
+  const before = JSON.stringify(await h.session());
+  const response = await h.controller.handleUi({ type: 'GET_REPORT' });
+  assert.ok(response.ok && typeof response.report === 'string');
+  const report = JSON.parse(response.report!);
+  assert.equal(report.session.phase, 'delay');
+  assert.equal(report.page.answered, true);
+  assert.equal(report.page.status, 'complete');
+  assert.equal(report.lastSendAttempt.stage, 'clicking_send');
+  assert.ok(!response.report!.includes('/c/abc'), 'no conversation id');
+  assert.equal(JSON.stringify(await h.session()), before, 'the session is unchanged');
+  assert.equal(h.submits.length, 0);
+});
+
+test('the diagnostic report still works when the ChatGPT tab does not answer', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  h.page.reachable = false;
+  const response = await h.controller.handleUi({ type: 'GET_REPORT' });
+  assert.ok(response.ok);
+  const report = JSON.parse(response.report!);
+  assert.deepEqual(report.page, { answered: false });
+  assert.equal(report.lastSendAttempt, null);
 });

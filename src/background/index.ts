@@ -6,6 +6,7 @@ import { createLogger } from '../shared/logger.ts';
 import { conversationPath } from '../shared/session.ts';
 import { loadSession } from '../shared/storage.ts';
 import type { SessionState } from '../shared/types.ts';
+import type { SendDiagnostic } from '../content/sendDiagnostics.ts';
 
 const log = createLogger('background');
 const CHATGPT_PATTERNS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
@@ -59,6 +60,11 @@ const tabs: TabAccess = {
     const command: ContentCommand = { type: 'SCHEDULE_PING', dueAt, now };
     await chrome.tabs.sendMessage(tabId, command);
   },
+  async getSendDiagnostic(tabId) {
+    const command: ContentCommand = { type: 'GET_SEND_DIAGNOSTIC' };
+    const response: unknown = await chrome.tabs.sendMessage(tabId, command);
+    return response && typeof response === 'object' && typeof (response as { stage?: unknown }).stage === 'string' ? (response as SendDiagnostic) : null;
+  },
 };
 
 // Three independent wake-ups for the end of the delay, all idempotent: a timer
@@ -107,6 +113,7 @@ const controller = createController({
   now: () => Date.now(),
   log,
   onStateChange: updateBadge,
+  environment: () => ({ extensionVersion: chrome.runtime.getManifest().version, userAgent: navigator.userAgent }),
   async notify(request) {
     await chrome.notifications.create(request.id, {
       type: 'basic',
