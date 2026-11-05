@@ -91,6 +91,9 @@ stop over guessing:
 | You type, switch conversation, or ChatGPT starts generating while the prompt waits for the Send button | Send is not clicked; the prompt is removed only if the box holds exactly the prompt; your text stays |
 | The tab switches to another conversation | Paused; nothing is sent anywhere else |
 | Usage limit, login prompt or an error notice | Stopped with an error; never retried automatically |
+| A notice Autopilot does not recognize (for example in a language without known notice texts) | Paused; nothing sent; never taken for a finished answer |
+| A continuation was sent but ChatGPT does not start answering within 60 s | Paused; nothing more sent |
+| ChatGPT generated, but no new answer is visible afterwards | Paused; nothing sent |
 | The prompt cannot be typed, Send never becomes available, or the click does not send | Error; the prompt is removed from the box again; not retried |
 | It cannot be confirmed whether the prompt was sent | Paused; that response is never answered again |
 | The tab is closed, or the browser/extension restarts | Paused; resume when the conversation is open again |
@@ -177,8 +180,9 @@ local fake ChatGPT page and drives the real panel.
 - Some ChatGPT interface languages identify the Send and Stop buttons only by
   a translated label. Recognized: English and Spanish (`Enviar`, `Detener`,
   observed on es-ES). Live-verified: Spanish (es-ES) only. Usage-limit, login
-  and error notices are recognized by their English texts only; on other
-  interface languages they are not yet recognized. Other languages work when ChatGPT provides its
+  and error notices are recognized by their English texts only. On other
+  interface languages such a notice makes Autopilot pause ("a notice Autopilot
+  does not recognize") instead of continuing. Other languages work when ChatGPT provides its
   language-independent `data-testid`/`id`; otherwise sending stops with "the
   send button did not become available" until the label is added
   (`docs/LIVE_VALIDATION.md` → "Adding a language").

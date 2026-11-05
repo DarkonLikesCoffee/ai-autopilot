@@ -313,3 +313,18 @@ test('diagnostics never change the outcome, even when they fail', async () => {
   assert.deepEqual(r2, r1);
   assert.equal(traced.state.clicks, 1);
 });
+
+test('an unrecognized notice appearing while the prompt waits: nothing is clicked and the prompt is removed', async () => {
+  const p = page();
+  p.state.sendUsable = false;
+  const original = p.doc.querySelectorAll.bind(p.doc);
+  let notice = false;
+  (p.doc as unknown as { querySelectorAll: (s: string) => unknown[] }).querySelectorAll = (selector: string) =>
+    selector === '[role="alert"]' && notice
+      ? [{ tagName: 'DIV', textContent: '[synthetic unknown notice]', getAttribute: () => null, closest: () => null, checkVisibility: () => true }]
+      : (original(selector) as unknown as unknown[]);
+  const result = await run(p, (poll) => { if (poll === 1) { notice = true; p.state.sendUsable = true; } });
+  assert.deepEqual(result, { outcome: 'refused', reason: 'unrecognized_notice' });
+  assert.equal(p.state.clicks, 0);
+  assert.equal(p.state.composer!.value, '');
+});

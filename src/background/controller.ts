@@ -66,6 +66,7 @@ export function precheckObservation(state: SessionState, observation: PageObserv
   if (observation.status === 'usage_limit') return 'usage_limit';
   if (observation.signals.authRequired) return 'auth_required';
   if (observation.status === 'generating') return 'generating';
+  if (observation.signals.unrecognizedNoticeFound) return 'unrecognized_notice';
   if (observation.signals.composerHasText) return 'composer_has_text';
   if (observation.status !== 'complete') return 'not_complete';
   if (observation.responseKey !== key) return 'response_changed';

@@ -112,6 +112,10 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
   window.__showLimit = () => {
     document.getElementById('notices').innerHTML = '<div role="alert">You\\u2019ve reached our limit of messages per hour. Please try again later.</div>';
   };
+  // A notice in a language Autopilot has no texts for (synthetic text, not a ChatGPT string).
+  window.__showUnknownNotice = () => {
+    document.getElementById('notices').innerHTML = '<div role="alert" style="padding:8px">[synthetic notice in an unknown language]</div>';
+  };
   window.__rerender = () => { const t = document.getElementById('thread'); t.replaceWith(t.cloneNode(true)); };
   renderControls();
 </script></body></html>`;
@@ -281,6 +285,20 @@ try {
   check('es-ES: the "Enviar" submit button sends the continuation, exactly once per response',
     esMessages[1] === PROMPT && (await session()).cycles >= 1 && esMessages.filter((m) => m === PROMPT).length === (await session()).cycles,
     JSON.stringify(esMessages.map((m) => m.slice(0, 12))));
+  await stop();
+
+  // ---- An unrecognized notice (any language) is never taken for a finished answer ----
+  const noticeChat = await openConversation('/c/e2e-es-notice?lang=es');
+  await start(noticeChat);
+  await noticeChat.evaluate((t) => window.__typeDraft(t), 'Hola');
+  await noticeChat.click('button[aria-label="Enviar"]');
+  await waitFor('delay before the continuation', async () => (await session()).phase === 'delay', 30000);
+  await noticeChat.evaluate(() => window.__showUnknownNotice());
+  await waitFor('pause on the unrecognized notice', async () => (await session()).reason === 'unrecognized_notice', 15000);
+  await sleep(3000);
+  check('an unrecognized notice pauses Autopilot and nothing is sent',
+    (await session()).run === 'paused' && (await messages(noticeChat)).length === 1,
+    JSON.stringify(await messages(noticeChat)));
   await stop();
 
   // ---- 12: usage limit stops automatic continuation ----

@@ -42,6 +42,13 @@ export interface PageSignals {
   usageLimitNoticeFound: boolean;
   /** Login screen or session-expired notice. */
   authRequired: boolean;
+  /**
+   * A visible alert-type notice outside the conversation (role="alert" or error
+   * styling) that matches none of the known usage-limit, login or error texts,
+   * for example a notice in an interface language without known texts. Never
+   * treated as a finished answer: Autopilot pauses instead of continuing.
+   */
+  unrecognizedNoticeFound: boolean;
 }
 
 /**
@@ -71,7 +78,10 @@ export type HaltReason =
   | 'composer_has_text'
   | 'submit_failed'
   | 'submission_uncertain'
-  | 'tab_unreachable';
+  | 'tab_unreachable'
+  | 'unrecognized_notice'
+  | 'no_response'
+  | 'no_new_answer';
 
 export interface SessionState {
   schemaVersion: 2;
@@ -99,6 +109,8 @@ export interface SessionState {
   answeredKeys: string[];
   lastStatus: ResponseStatus;
   lastContinuationAt: number | null;
+  /** Set when a continuation was confirmed sent before ChatGPT was seen generating; cleared once it generates. */
+  awaitingResponseSince: number | null;
   startedAt: number | null;
   updatedAt: number | null;
   log: LogEntry[];
