@@ -101,6 +101,47 @@ where it was observed as `source`. Add the same selector to the `SEND` list in
 translation that was not observed, and never a generic selector such as
 `button[type="submit"]`.
 
+## Recorded runs
+
+Only what the owner observed and reported is recorded here. A row not listed
+was not run.
+
+### Run 1 — 2026-11-04, es-ES — FAIL (fixed in #12)
+
+- Interface: ChatGPT web, Spanish (`es-ES`). Build: `main` before #12.
+- Result: detection worked; the prompt was inserted, then the run stopped with
+  "The continuation could not be sent: the send button did not become available."
+- Activity log as reported:
+
+  ```
+  13:14:02 ChatGPT is generating a response.
+  13:14:09 Response complete. Continuation 1 in 10s.
+  13:14:19 Sending continuation 1.
+  13:14:23 Error: The continuation could not be sent (the send button did not become available).
+  ```
+- Diagnostics (A) as reported: `holdsPrompt: true`, `proseMirror: true`,
+  `execCommandReturned: true`; all four send selectors matched nothing. The
+  page's send control: `<button aria-label="Enviar" type="submit">`.
+- Root cause: no selector for the Spanish label. Fixed in #12 (`LOCALIZED_LABELS`).
+
+### Run 2 — reported 2026-11-05, es-ES — PASS
+
+- Interface: ChatGPT web, Spanish (`es-ES`). Build: `main` after #12 (the
+  exact commit was not stated). Maximum cycles: 3.
+- Reported results:
+
+  | Row | Result |
+  |---|---|
+  | D2 (completion detection) | PASS — each finished response was detected as complete |
+  | S1 (one continuation per finished response) | PASS — three continuations were submitted, each confirmed as sent; ChatGPT answered each |
+  | S2 (cycle limit) | PASS — stopped exactly at the maximum (3) |
+  | D1, D3–D6, S3–S6 | NOT RUN |
+- Activity log: not captured verbatim in this record (not included in the report).
+- Not established by this run: composer protection (S3), conversation
+  switching (S4, D6), background/hidden tabs (S5, S6), regenerated answers
+  (D5), usage-limit/login/error notices, and any interface language other than
+  Spanish.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

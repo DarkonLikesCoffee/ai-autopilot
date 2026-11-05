@@ -51,18 +51,18 @@
 
 Goal: prove that the extension can safely observe and continue a real ChatGPT conversation under realistic browser conditions, and fail safely when it cannot.
 
-Status: [UNRESOLVED] In progress.
+Status: [UNRESOLVED] In progress. Reassessed 2026-11-05 after the first successful live run (`docs/LIVE_VALIDATION.md` → Run 2, es-ES).
 
 ### Definition of done
 
-- [ ] Current selectors and completion detection are validated against the live ChatGPT site without relying on undocumented APIs.
-- [ ] Sending is validated in a real ChatGPT conversation, including confirmation that the continuation was sent exactly once.
-- [ ] Composer protection is verified when the user has typed text.
-- [ ] Conversation switching, usage-limit notices, login/error states and generation restarts fail safely.
-- [ ] Background/hidden-tab behavior is understood and documented; unsupported conditions are detected and handled safely.
-- [ ] Unit tests, typecheck and build pass.
-- [ ] Browser E2E coverage passes for all relevant deterministic scenarios.
-- [ ] No known high-severity regression remains.
+- [ ] Current selectors and completion detection are validated against the live ChatGPT site without relying on undocumented APIs. **Partly:** [VERIFIED] live on es-ES — completion of three responses detected correctly; the Spanish send/stop labels work. Not yet: D1/D3–D6 individually, any other interface language.
+- [x] Sending is validated in a real ChatGPT conversation, including confirmation that the continuation was sent exactly once. [VERIFIED] live on es-ES (Run 2): three continuations, each confirmed sent, one per finished response; stopped exactly at the cycle limit of 3. Evidence: owner report, 2026-11-05.
+- [ ] Composer protection is verified when the user has typed text. Unit/E2E tested; live S3 NOT RUN.
+- [ ] Conversation switching, usage-limit notices, login/error states and generation restarts fail safely. Unit/E2E tested; live S4/D5/D6 NOT RUN; usage-limit and login notices not observed live.
+- [ ] Background/hidden-tab behavior is understood and documented; unsupported conditions are detected and handled safely. Live S5/S6 NOT RUN (see T4).
+- [x] Unit tests, typecheck and build pass. [VERIFIED] `npm run check` on `main` (125 tests).
+- [x] Browser E2E coverage passes for all relevant deterministic scenarios. [VERIFIED] `npm run e2e` locally (fake page, incl. es-ES variant). [UNRESOLVED] E2E does not run in CI, so it is only as current as the last local run.
+- [x] No known high-severity regression remains. [VERIFIED] none known as of 2026-11-05.
 
 Do not claim the milestone complete based only on fake-page tests.
 
@@ -81,7 +81,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 
 Choose the highest-priority task that remains valid after inspecting the current code, open PRs and CI. Update this list as tasks are completed or priorities change.
 
-- [ ] **T1 (P0): Live-site compatibility investigation.** Partly done (2026-11-03): the manual procedure is `docs/LIVE_VALIDATION.md`; opt-in text-free diagnostics exist; selectors from the owner's live observations (`data-conversation-role`, `data-user-message-bubble`, `data-talvt-turn-state="in_progress"`, Spanish stop label "Detener") are in `selectors.ts`. **Remaining:** a person must run the procedure on the real site and record results. [ASSUMED] the new selectors match the live site — they come from the owner's branch `fix/live-chatgpt-detection`; no run is recorded.
+- [ ] **T1 (P0): Live-site compatibility investigation.** Live run 1 (es-ES) found the missing Spanish send label (fixed, #12); live run 2 (es-ES, 2026-11-05) PASSED detection, sending exactly once and the cycle limit. **Remaining:** live rows D1, D3–D6, S3–S6 (owner), and other interface languages when someone uses them.
 - [x] **T2 (P0): Completion-detection test coverage.** Done 2026-11-04. Added deterministic tests for streaming that pauses and resumes, DOM replacement inside the confirmation window, response ids that change after completion, navigation away and back, and regenerated responses (new id vs same key). Found and fixed a silent stall: a finished response whose key changed without a new generation (a late message id, a re-render) left Autopilot "Running" but never continuing. The pending continuation now moves to the updated response with a fresh delay (at least the confirmation delay when the read was not confirmed); answered keys are never targeted. [ASSUMED] that ChatGPT really assigns ids late — not observed; the fix is safe either way.
 - [x] **T3 (P0): Submission safety audit.** Done 2026-11-04 (#6 and follow-up). Done: the window between typing the prompt and clicking send (up to 3 s while the send button becomes available). Fixed: (1) text you typed during that wait was sent together with the prompt; (2) if the send button never became available, everything in the box was deleted, including your text; (3) no re-check of conversation, generation or usage limit before the click. Now every poll and the moment before the click re-check the page; the prompt is removed only while the box holds exactly the prompt; a prompt that vanished before the click is reported as uncertain (pause, never retried). New `test/composer.test.ts` (10 tests, fake DOM). Part 2 (after the click): more user messages appearing (older ones loading in, a re-render) while the prompt is still in the box was taken as "sent", leaving the prompt unsent and the session waiting forever; confirmation now also requires the prompt to have left the box. A send that happens after `confirmMs` empties the box, so it is reported as uncertain (never retried). The contenteditable (ProseMirror) path is covered by the Chromium E2E only, not by unit tests.
 - [ ] **T4 (P0): Hidden/background tab behavior.** In progress (2026-11-04). Done: the send step's waits (Send button up to 3 s, confirmation up to 10 s) were counted in polls, so late timers could stretch them without bound while the background waited for the reply; they are now wall-clock bounded, and Send is never clicked if the attempt took more than `sendReadyMs + lateMarginMs` (5 s) — the prompt is removed and the run stops with a `tab_suspended` error. Experiments in headless Chromium (scratch scripts, not committed): a page frozen with CDP `Page.setWebLifecycleState` still answered messages and ran timers, so real freezing could not be reproduced; `chrome.tabs.discard` crashed headless Chromium. [ASSUMED] Chrome's documented intensive throttling of hidden tabs (chained timers about once a minute after 5 min hidden) applies to the content script; not observed here. **Remaining:** observe real hidden/frozen/discarded tabs in a headed browser (`docs/LIVE_VALIDATION.md` S5–S6) and decide the supported behavior from that evidence.
@@ -149,12 +149,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-04 | T6: overdue-result check after a worker restart during an attempt; schema-version test. 3 new tests (1 fails on the old code). | [VERIFIED] in tests below. | `npm run check` PASS (107 unit tests); `npm run e2e` PASS. |
 | 2026-11-04 | Live-site send failure investigation: opt-in, text-free send-step diagnostics (`src/content/sendDiagnostics.ts`: send-selector matches with visibility/disabled/attributes, the button that would be chosen, buttons next to the message box, message-box state incl. ProseMirror placeholder and ChatGPT's hidden textarea, insertion method); console probe `docs/send-probe.js` for a hand-typed baseline; capture procedure in `docs/LIVE_VALIDATION.md`. Real-ProseMirror experiment rules out the generic editor-state hypothesis. No behavior change. | Root cause [UNRESOLVED] pending owner's capture. | `npm run check` PASS (113 unit tests); `npm run e2e` PASS incl. a new check that the diagnostics describe a failed send without the prompt. |
 | 2026-11-04 | Fixed the live es-ES send failure (root cause from the owner's diagnostics: no selector matched `button[aria-label="Enviar"]`). Localized label table; composer-form preference for the send button. Regression tests reproduce the live structure (and the old selector list reproduces the failure); E2E has an es-ES page variant, which fails on the previous build and passes now. | [VERIFIED] in tests below; owner to confirm on the live site. | `npm run check` PASS (125 unit tests); `npm run e2e` PASS. |
+| 2026-11-05 | **First successful live validation** (owner, ChatGPT web, es-ES, max cycles 3): completion detected, three continuations submitted and confirmed, ChatGPT answered each, stopped exactly at 3. Recorded as Run 2 in `docs/LIVE_VALIDATION.md` (activity log not included in the report). M1 reassessed: sending exactly once now verified live; composer protection, conversation switching, error notices and hidden tabs still lack live evidence. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **Next task (owner):** rebuild, reload the extension and re-run S1–S2 of `docs/LIVE_VALIDATION.md` on the es-ES ChatGPT UI; record whether the continuation is sent exactly once. Then continue with the remaining D/S rows.
-- **Then (cloud):** fix whatever the live run shows, with tests built from captured structure. Without new evidence, no further selector or timing changes.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for the owner's live confirmation.
+- **Next task (cloud):** run the browser E2E in CI, so every PR is checked against the real-Chromium scenarios (including es-ES) instead of relying on the last local run. Add Playwright as a pinned dev dependency and a separate CI job; do not change the existing `check` job.
+- **Owner (when convenient, not blocking cloud work):** live rows S3 (type during the countdown), S4 (switch conversation during the countdown), D5 (regenerate) and S5/S6 (background/minimised tab), recorded in `docs/LIVE_VALIDATION.md`.
+- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol
 
