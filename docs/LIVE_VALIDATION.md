@@ -41,7 +41,7 @@ If any row fails, save the logged diagnostic (it is text-free) and update
 `src/content/selectors.ts`; add a unit test in `test/page.test.ts` that
 reproduces the observed markup.
 
-## Sending (Maximum cycles = 2)
+## Sending (Maximum cycles = 2 or 3)
 
 | # | Do | Expect |
 |---|---|---|
@@ -51,6 +51,22 @@ reproduces the observed markup.
 | S4 | Start again, switch conversation during the countdown | Paused; nothing sent in either conversation |
 | S5 | Start, then move the tab behind another tab in the same window | Continuation still sent to the session's tab (record if it fails) |
 | S6 | Start, then minimise the window or switch to another window | Record exactly what happens (hidden-tab behaviour is not yet established) |
+| P1 | During the countdown press Pause, later Resume; separately press Stop | Pause/Stop: nothing sent. Resume: one continuation after a fresh delay |
+
+Note for S3: Autopilot pauses **when the countdown ends** (its last check before
+sending sees text in the box), not at the moment you start typing.
+
+## Notices and recovery (record when they happen)
+
+| # | Situation | Expect |
+|---|---|---|
+| N1 | A usage-limit notice appears | Error, "ChatGPT shows a usage limit"; nothing sent; not retried |
+| N2 | Logged out / session expired | Error, "ChatGPT asks you to log in"; nothing sent |
+| N3 | A ChatGPT error notice ("Something went wrong", network error) | Error, "ChatGPT shows an error"; nothing sent |
+| R1 | Close the ChatGPT tab during the countdown | Paused, "The ChatGPT tab was closed"; nothing sent |
+| R2 | Quit and reopen the browser while running | Paused, "The browser or the extension restarted"; nothing sent until you resume |
+
+The status of every row is kept in `AUTOPILOT.md` → "Live test matrix".
 
 Turn diagnostics off afterwards:
 
