@@ -47,24 +47,26 @@
 
 ## 5. Current milestone
 
-**Milestone M1 — Establish real-world interaction reliability**
+**Milestone M1 — Establish real-world interaction reliability** — **COMPLETE (2026-11-05)**
 
 Goal: prove that the extension can safely observe and continue a real ChatGPT conversation under realistic browser conditions, and fail safely when it cannot.
 
-Status: [UNRESOLVED] **In progress — not complete.** Reassessed 2026-11-05 (runs 2–4, the indirect-coverage assessment, and the notice fail-safe change). Seven of eight requirements are met; requirement 4 is fixed in code and tests but needs a live regression run (Run 5: S1–S2 on es-ES) because the change adds new pauses.
+Status: [VERIFIED] **Complete.** Final reassessment 2026-11-05 after live Run 5 (`docs/LIVE_VALIDATION.md`). Every requirement is met by live evidence, or by a documented and owner-approved basis (marked *exception* or *indirect*).
 
 ### Definition of done
 
-- [x] **Selectors and completion detection validated against the live site.** [VERIFIED] es-ES: D2, D5, L1 live. D4 and D6 covered by S3/S4; D1 and D3 indirectly covered for behaviour, with safe failure modes (see "Indirect coverage assessment"). **Documented exception:** English and other interface languages not live-verified (see "Interface languages").
-- [x] **Sending validated, exactly once.** [VERIFIED] es-ES run 2; no duplicate after regenerating (D5, run 3).
+- [x] **Selectors and completion detection validated against the live site.** [VERIFIED] es-ES: D2, D5, L1 live (runs 2, 3, 5). D4 and D6 covered by S3/S4. *Indirect:* D1 and D3 covered for behaviour, with safe failure modes (see "Indirect coverage assessment"). *Exception:* English and other interface languages not live-verified (see "Interface languages").
+- [x] **Sending validated, exactly once.** [VERIFIED] es-ES runs 2 and 5: three continuations each, one per finished response, no duplicates, stopped at the limit; no duplicate after regenerating (D5, run 3).
 - [x] **Composer protection when the user has typed text.** [VERIFIED] S3, run 3.
-- [ ] **Conversation switching, usage-limit notices, login/error states and generation restarts fail safely.** [VERIFIED] switching (S4) and generation restarts (D5), live. N1–N3 not live-tested (owner decision; unit/E2E coverage documented). The **es-ES notice gap is fixed language-independently** (2026-11-05): an unrecognized alert outside the conversation pauses and is never taken for a finished answer; a continuation not followed by a generation within 60 s pauses; a generation that ends without a new answer pauses. Unit and E2E tested, including the es-ES fake page. No Spanish notice text was added: none could be verified from a reliable source (see "Notice research"). **Open:** Run 5 (S1–S2 on es-ES) to confirm the normal live flow is not paused by a notice ChatGPT shows routinely.
-- [x] **Background/hidden-tab behaviour understood and documented; unsupported conditions handled safely.** [VERIFIED] S5 (tab behind another tab: sent) and S6 (minimised browser: kept working, continuation sent), runs 3–4. The send step's wall-clock bounds (T4) remain the safeguard for throttled or frozen tabs, which were not observed.
+- [x] **Conversation switching, usage-limit notices, login/error states and generation restarts fail safely.** [VERIFIED] switching (S4) and generation restarts (D5) live. Unrecognized notices in any language pause (#18; unit + E2E tested; Run 5 confirmed no false pauses on the live es-ES flow). *Exception (owner decision):* N1–N3 not triggered live because that isn't practical; their unit/E2E coverage and the reasons are documented.
+- [x] **Background/hidden-tab behaviour understood and documented; unsupported conditions handled safely.** [VERIFIED] S5 and S6 (runs 3–4: sent normally in a background tab and with the browser minimised). Throttled or frozen tabs were not observed; the wall-clock bounds (T4) remain the safeguard.
 - [x] **Unit tests, typecheck and build pass.** [VERIFIED] `npm run check` (140 tests); CI `check`.
 - [x] **Browser E2E passes for all relevant deterministic scenarios.** [VERIFIED] CI `e2e` on every PR (owner is configuring it as a required check).
-- [x] **No known high-severity regression.** [VERIFIED] none known; pending Run 5 for the new pauses.
+- [x] **No known high-severity regression.** [VERIFIED] Run 5 after the last behaviour change: no unexpected pause, no duplicate.
 
-P1 (Pause/Resume/Stop): [VERIFIED] run 4.
+P1 (Pause/Resume/Stop): [VERIFIED] run 4. R5 (regression after #18): [VERIFIED] run 5.
+
+**Known limitations carried forward (not M1 blockers):** English and other interface languages are not live-verified; notice texts are English-only (other languages pause as "unrecognized"; exact texts are added when observed, D9); real frozen or discarded tabs were not observed.
 
 Do not claim the milestone complete based only on fake-page tests.
 
@@ -95,7 +97,7 @@ Authoritative status of every live test. Procedure and capture steps: `docs/LIVE
 | L1 | Spanish interface (es-ES) | Send (`Enviar`) and Stop (`Detener`) recognized | Detection / sending | **VERIFIED** (Run 2) |
 | L2 | English interface | Same as S1/S2 | Detection / sending | NOT RUN: documented exception (not required by the DoD) |
 | N4 | An unrecognized notice appears (e.g. a Spanish usage-limit or error notice), during a countdown or instead of an answer | Paused, "ChatGPT shows a notice Autopilot does not recognize" (or "did not start answering" / "finished without a new answer"); nothing sent | Error states | NOT RUN (cannot be triggered on demand; unit + E2E tested) |
-| R5 | Run 5: after the notice fail-safe change, repeat S1–S2 on es-ES | Same as S1–S2: no unexpected pause | Regression | NOT RUN |
+| R5 | Run 5: after the notice fail-safe change, repeat S1–S2 on es-ES | Same as S1–S2: no unexpected pause | Regression | **VERIFIED** (Run 5) |
 
 M1's definition of done needs, at minimum: D1–D6, S1–S4 and P1 VERIFIED; S5/S6 observed and their behaviour documented; N1–N3 VERIFIED when they occur, or explicitly accepted as untestable on demand by the owner (they are covered by unit and E2E tests). *Updated 2026-11-05 by owner decision:* D1/D3/D4/D6 may be met by documented indirect coverage; N1–N3 stay unverified live with documented coverage; L2 is a documented exception.
 
@@ -140,13 +142,29 @@ None of this is reliable evidence of ChatGPT's current wording, so **no Spanish 
 
 The definition of done requires validation "against the live ChatGPT site"; it does not require each interface language. M1 was validated live on es-ES. **Documented exception:** English (L2) and all other languages are not live-verified. English uses the original selectors, starting with the language-independent `data-testid`/`id`, but that is unverified live. README says so.
 
+## 5b. Current milestone: M2 — Recovery and observability
+
+Goal: when something goes wrong, the user (and a developer helping them) can see what happened, know whether to simply resume or fix something first, and hand over a complete technical report in one step, all without conversation text.
+
+Why now (evidence from M1): every live investigation (runs 1–5) needed the owner to copy console objects from two places by hand; and the panel shows a reason for each pause or error but not whether Resume is safe or something must be fixed first.
+
+### Definition of done (M2)
+
+- [ ] **Diagnostic report export:** one action in the panel copies a report with technical state only: extension version, browser, session state, the activity log, the last page observation's signals, the last send-step diagnostic, and settings minus the prompt text. A test proves no prompt, message, composer or notice text can appear in it.
+- [ ] **Recoverable vs terminal:** every halt reason is classified as "resume when ready" or "fix first", and the panel says which, with one line on what to do. A test covers every reason.
+- [x] **Stage history:** [VERIFIED] T5 (log of generation observed, completion, scheduling, attempt, confirmation, halts).
+- [x] **Recovery after worker suspension, browser restart and stale storage:** [VERIFIED] T6 and tests. Extension update: covered by the schema-version test (state restored as stopped); a live update was not observed.
+- [x] **Storage schema/version tests:** [VERIFIED] T6.
+- [ ] **Checks:** `npm run check` and CI `e2e` pass, with E2E covering the export.
+- [ ] **Live:** the owner exports one report from the real ChatGPT tab and confirms it contains no conversation text.
+
 ## 6. Prioritized roadmap
 
 See `docs/ROADMAP.md` for milestone details. Current order:
 
-1. **P0 — M1 reliability:** live compatibility, detection correctness, exactly-once sending, safe composer behavior, hidden-tab handling and diagnostics.
-2. **P1 — M2 recovery and observability:** actionable diagnostics, session history, robust restart/recovery behavior and clearer error states.
-3. **P1 — M3 stopping and control:** structured completion/blocked signals and predictable stop behavior, without pretending the extension can judge code quality.
+1. ~~**P0 — M1 reliability**~~ — **complete 2026-11-05.**
+2. **P1 — M2 recovery and observability (current).** Most of it was delivered during M1 (stage log T5, text-free diagnostics #3/#11, restart recovery and schema tests T6). Remaining: an exportable text-free diagnostic report, and a clear recoverable-vs-terminal distinction. See section 5b.
+3. **P1 — M3 stopping and control — needs an owner decision first.** Recognizing a CONTINUE/BLOCKED/COMPLETE marker requires reading the text of ChatGPT's latest answer, which the README and principle 10 currently rule out ("never reads … conversation text"). Not started until the owner decides whether, and how narrowly, the extension may read that text.
 4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
 5. **P3 — M5 product polish:** onboarding, settings UX, accessibility, packaging and release process.
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
@@ -155,13 +173,15 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 
 Choose the highest-priority task that remains valid after inspecting the current code, open PRs and CI. Update this list as tasks are completed or priorities change.
 
-- [ ] **T1 (P0): Live-site compatibility investigation.** Live run 1 (es-ES) found the missing Spanish send label (fixed, #12); live run 2 (es-ES, 2026-11-05) PASSED detection, sending exactly once and the cycle limit. **Remaining:** live rows D1, D3–D6, S3–S6 (owner), and other interface languages when someone uses them.
+- [x] **T1 (P0): Live-site compatibility investigation.** Done 2026-11-05: runs 1–5 on es-ES (see the live test matrix). Other interface languages remain a documented limitation.
 - [x] **T2 (P0): Completion-detection test coverage.** Done 2026-11-04. Added deterministic tests for streaming that pauses and resumes, DOM replacement inside the confirmation window, response ids that change after completion, navigation away and back, and regenerated responses (new id vs same key). Found and fixed a silent stall: a finished response whose key changed without a new generation (a late message id, a re-render) left Autopilot "Running" but never continuing. The pending continuation now moves to the updated response with a fresh delay (at least the confirmation delay when the read was not confirmed); answered keys are never targeted. [ASSUMED] that ChatGPT really assigns ids late — not observed; the fix is safe either way.
 - [x] **T3 (P0): Submission safety audit.** Done 2026-11-04 (#6 and follow-up). Done: the window between typing the prompt and clicking send (up to 3 s while the send button becomes available). Fixed: (1) text you typed during that wait was sent together with the prompt; (2) if the send button never became available, everything in the box was deleted, including your text; (3) no re-check of conversation, generation or usage limit before the click. Now every poll and the moment before the click re-check the page; the prompt is removed only while the box holds exactly the prompt; a prompt that vanished before the click is reported as uncertain (pause, never retried). New `test/composer.test.ts` (10 tests, fake DOM). Part 2 (after the click): more user messages appearing (older ones loading in, a re-render) while the prompt is still in the box was taken as "sent", leaving the prompt unsent and the session waiting forever; confirmation now also requires the prompt to have left the box. A send that happens after `confirmMs` empties the box, so it is reported as uncertain (never retried). The contenteditable (ProseMirror) path is covered by the Chromium E2E only, not by unit tests.
-- [ ] **T4 (P0): Hidden/background tab behavior.** In progress (2026-11-04). Done: the send step's waits (Send button up to 3 s, confirmation up to 10 s) were counted in polls, so late timers could stretch them without bound while the background waited for the reply; they are now wall-clock bounded, and Send is never clicked if the attempt took more than `sendReadyMs + lateMarginMs` (5 s) — the prompt is removed and the run stops with a `tab_suspended` error. Experiments in headless Chromium (scratch scripts, not committed): a page frozen with CDP `Page.setWebLifecycleState` still answered messages and ran timers, so real freezing could not be reproduced; `chrome.tabs.discard` crashed headless Chromium. [ASSUMED] Chrome's documented intensive throttling of hidden tabs (chained timers about once a minute after 5 min hidden) applies to the content script; not observed here. **Remaining:** observe real hidden/frozen/discarded tabs in a headed browser (`docs/LIVE_VALIDATION.md` S5–S6) and decide the supported behavior from that evidence.
+- [x] **T4 (P0): Hidden/background tab behavior.** Done 2026-11-05: wall-clock bounds on the send step (#8); live S5/S6 passed (runs 3–4). Real frozen or discarded tabs were not observed; the bounds remain the safeguard.
 - [x] **T5 (P1): Diagnostics.** Done 2026-11-04. Audit of the activity log against the five stages: confirmed completion + scheduled continuation ("Response complete. Continuation N in Xs."), submission attempt ("Sending continuation N."), confirmed submission ("Continuation N sent.") were logged; **generation observed was never logged**, so a stalled run could not show whether ChatGPT was ever seen working. Added "ChatGPT is generating a response." once per response. A completion detected but not yet confirmed exists only in the content script (the panel shows the live ChatGPT state; the opt-in console diagnostics show it in detail); not added to the log, to avoid a new message type for a transient state. Test: a full cycle logs each stage once, in order. No conversation text in any message.
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
-- [ ] **T7 (P1): Structured stop protocol.** Evaluate a conservative, explicit assistant status signal for CONTINUE/BLOCKED/COMPLETE. Do not implement until M1 reliability is established; status text is not proof that the work itself is correct.
+- [ ] **T7 (P1, M3): Structured stop protocol.** **Blocked on an owner decision:** it requires reading the latest answer's text, which the privacy principle currently excludes. Status text is not proof that the work itself is correct.
+- [ ] **T10 (P1, M2): Diagnostic report export.** "Copy diagnostic report" in the panel; text-free technical state (see M2 definition of done); unit test for the absence of text; E2E for the button.
+- [ ] **T11 (P1, M2): Recoverable vs terminal.** Classify every halt reason; show "resume when ready" or "fix first" with one line of guidance in the panel; tests for every reason.
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
 - [ ] **T9 (P3): UX and release polish.** Improve onboarding, accessibility, settings clarity and packaging after core reliability.
 
@@ -230,13 +250,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | Live run 3 (owner report): S3, S4, D5, S5, S6 PASS. M1 reassessed item by item: 5 of 8 requirements met; open: D1/D3/D4/D6 (diagnostic-level, owner may accept as covered), N1–N3 (not observed live), S6 outcome detail, and P1. M1 **not** marked complete. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-05 | M1 coverage assessment. D4 and D6 are covered by S3/S4 (same signals in real use). D1 and D3 are indirectly covered for behaviour, with safe failure modes. N1–N3 coverage and reasons documented. L2 is a documented exception. **Found:** notice patterns are English-only, so on es-ES usage-limit and error notices are not recognized; requirement 4 stays open pending owner decision. README language note corrected. M1 still not complete (open: requirement 4 language gap, S6 outcome, P1). | Documentation only. | `npm run check` PASS. |
 | 2026-11-05 | Run 4 (owner): P1 PASS; S6 clarified (kept working, sent). Fixed the es-ES notice gap language-independently: unrecognized alert → pause (signal `unrecognizedNoticeFound`, all prechecks, the wait before clicking, detector reports); no generation within 60 s after a sent continuation → pause (`no_response`); a generation ending without a new answer → pause (`no_new_answer`). English detection unchanged. Research found no reliable Spanish notice texts, so none was added (D9). One T2 test now expects a pause instead of a silent continuation (ambiguous page). | [VERIFIED] in tests below; live Run 5 pending. | `npm run check` PASS (140 tests); `npm run e2e` PASS incl. a new es-ES unrecognized-notice scenario; the 7 new controller tests fail on the old state machine. |
+| 2026-11-05 | Run 5 (owner, es-ES): three continuations, no unexpected pauses, no duplicates, stopped at 3: R5 PASS. **M1 marked complete** after a final item-by-item reassessment (documented exceptions: English and other languages not live-verified; N1–N3 not triggered live). Roadmap reassessed: M2 is current (two items left: T10 report export, T11 recoverable vs terminal); M3 blocked on an owner decision about reading the latest answer's text. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **Owner:** Run 5. Rebuild, reload, and repeat S1–S2 on the es-ES interface (max cycles 3). Expected: three continuations, stop at 3, no unexpected pause. If Autopilot pauses with "ChatGPT shows a notice Autopilot does not recognize", send the notice's exact text (if one is visible) and the `Page detection` console entry with diagnostics on. ChatGPT may show an alert routinely; the alert rule would then need narrowing.
-- **Then (cloud):** if Run 5 passes, M1 meets every requirement (with the documented exceptions). Mark it complete, and reassess the roadmap to choose the next step (candidate: M2: Recovery and observability).
-- **Whenever a real non-English notice appears:** add its exact text with a test (D9).
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for Run 5.
+- **Next task (cloud):** T10: diagnostic report export (M2). First step: list what the panel already has (session state, log, settings) and what only the content script has (last observation signals, last send-step diagnostic); design a text-free report and a test that it can never contain prompt, message or notice text.
+- **Owner decision (non-blocking for M2):** M3 / T7. May the extension read the text of ChatGPT's latest answer, only to look for an explicit status marker such as `AUTOPILOT STATUS: COMPLETE`? It would never store or send it. Until decided, M3 is not started.
+- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol
 

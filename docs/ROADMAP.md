@@ -8,7 +8,9 @@ A user should be able to start a ChatGPT conversation connected to a software pr
 
 The extension should remain small and deterministic. ChatGPT is the reasoning engine; the extension is the reliable trigger and control surface.
 
-## M1 — Real-world interaction reliability (current, P0)
+## M1 — Real-world interaction reliability (P0) — complete 2026-11-05
+
+Completed with live validation on the es-ES interface (runs 1–5 in `docs/LIVE_VALIDATION.md`). Carried forward as known limitations: other interface languages are not live-verified, and notice texts are English-only (unrecognized notices pause).
 
 **Outcome:** The core detect → wait → validate → type → send → confirm loop behaves safely under realistic conditions.
 
@@ -22,7 +24,9 @@ Work areas:
 
 Exit criteria are defined in `AUTOPILOT.md`. Fake-page tests alone are insufficient evidence for live compatibility.
 
-## M2 — Recovery and observability (P1)
+## M2 — Recovery and observability (P1) — current
+
+Much of this was delivered during M1 (stage log, text-free diagnostics, restart recovery, schema tests). Remaining: an exportable text-free report and a recoverable-vs-terminal distinction (see `AUTOPILOT.md` section 5b).
 
 **Outcome:** Users and developers can understand what happened and recover from expected browser lifecycle events.
 
@@ -36,7 +40,9 @@ Potential work:
 
 Do not add telemetry or a remote backend just to obtain diagnostics.
 
-## M3 — Explicit stopping and control protocol (P1)
+## M3 — Explicit stopping and control protocol (P1) — needs an owner decision
+
+Prerequisite decision: recognizing a status marker means reading the text of ChatGPT's latest answer, which the current privacy principle rules out. The owner decides whether and how narrowly to allow it (for example: only the last answer, only an exact marker on its own line, never stored or sent).
 
 **Outcome:** Repeated continuation stops predictably when the project workflow is complete or blocked.
 
