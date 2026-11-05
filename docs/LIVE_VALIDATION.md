@@ -158,6 +158,22 @@ was not run.
   (D5), usage-limit/login/error notices, and any interface language other than
   Spanish.
 
+### Run 3 — reported 2026-11-05 — PASS
+
+- Interface language and build: not stated in the report (runs 1–2 were es-ES
+  on `main` after #12).
+- Reported results:
+
+  | Row | Result |
+  |---|---|
+  | S3 (typing during the countdown) | PASS |
+  | S4 (conversation switching during the countdown) | PASS |
+  | D5 (regenerating answers) | PASS |
+  | S5 (session tab behind another tab) | PASS |
+  | S6 (minimised browser) | PASS — which of the two safe outcomes occurred (sent once, or stopped with an error and the prompt removed) was not stated |
+  | D1, D3, D4, D6, P1, N1–N3, R1–R2, L2 | NOT RUN (not part of this report) |
+- Activity log: not included in the report.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when
