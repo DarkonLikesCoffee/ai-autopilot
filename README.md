@@ -139,7 +139,7 @@ npm run typecheck   # strict TypeScript
 npm test            # unit tests (node --test)
 npm run build       # bundles into dist/
 npm run check       # all three
-npm run e2e         # real-browser test (needs Playwright with Chromium)
+npm run e2e         # real-browser test (Playwright + Chromium; also runs in CI)
 ```
 
 Architecture (`src/`):
