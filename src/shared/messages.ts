@@ -67,6 +67,7 @@ export function isUiRequest(value: unknown): value is UiRequest {
 }
 
 const STATUS_VALUES = new Set(['unknown', 'idle', 'generating', 'complete', 'error', 'usage_limit']);
+const MARKER_VALUES = new Set(['none', 'continue', 'complete', 'blocked', 'unclear']);
 
 export function isPageObservation(value: unknown): value is PageObservation {
   if (!value || typeof value !== 'object') return false;
@@ -75,7 +76,9 @@ export function isPageObservation(value: unknown): value is PageObservation {
     typeof o.status === 'string' && STATUS_VALUES.has(o.status) &&
     (o.responseKey === null || typeof o.responseKey === 'string') &&
     typeof o.url === 'string' &&
-    !!o.signals && typeof o.signals === 'object'
+    !!o.signals && typeof o.signals === 'object' &&
+    // M3: only the comparison result may cross; anything else (such as text) is rejected.
+    MARKER_VALUES.has((o.signals as Record<string, unknown>).statusMarker as string)
   );
 }
 

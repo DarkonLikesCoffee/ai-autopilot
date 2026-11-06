@@ -6,7 +6,7 @@
 
 import type { ContentReport, SubmitRequest, SubmitResult, TabInfo, UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
 import type { Logger } from '../shared/logger.ts';
-import { conversationPath, transition, type PrecheckFailure, type SessionEffect, type SessionEvent, type TransitionResult } from '../shared/session.ts';
+import { conversationPath, markerFailure, transition, type PrecheckFailure, type SessionEffect, type SessionEvent, type TransitionResult } from '../shared/session.ts';
 import { defaultSettings, normalizeSettings, validateSettings } from '../shared/settings.ts';
 import { createSerialQueue, loadSession, loadSettings, saveSession, saveSettings, type StorageAreaLike } from '../shared/storage.ts';
 import type { PageObservation, SessionState, Settings } from '../shared/types.ts';
@@ -67,7 +67,7 @@ export interface Controller {
 class UserError extends Error {}
 
 /** The background's own check of the live page before it records an attempt. */
-export function precheckObservation(state: SessionState, observation: PageObservation, key: string): PrecheckFailure | null {
+export function precheckObservation(state: SessionState, observation: PageObservation, key: string, stopOnMarker = false): PrecheckFailure | null {
   if (conversationPath(observation.url) !== state.conversation) return 'conversation_changed';
   if (observation.status === 'usage_limit') return 'usage_limit';
   if (observation.signals.authRequired) return 'auth_required';
@@ -76,6 +76,8 @@ export function precheckObservation(state: SessionState, observation: PageObserv
   if (observation.signals.composerHasText) return 'composer_has_text';
   if (observation.status !== 'complete') return 'not_complete';
   if (observation.responseKey !== key) return 'response_changed';
+  const marker = markerFailure(observation.signals.statusMarker);
+  if (stopOnMarker && state.markerAcknowledgedKey !== key && marker) return marker;
   return null;
 }
 
@@ -134,7 +136,7 @@ export function createController(deps: ControllerDeps): Controller {
     if (tabId === null || observation === null) {
       return (await apply(state, { type: 'PRECHECK_FAILED', key, reason: 'tab_unreachable', now }, settings)).state;
     }
-    const failure = precheckObservation(state, observation, key);
+    const failure = precheckObservation(state, observation, key, settings.stopOnMarker);
     if (failure) {
       const failed = (await apply(state, { type: 'PRECHECK_FAILED', key, reason: failure, now }, settings)).state;
       return failure === 'response_changed' ? observeAgain(failed, tabId, settings, observation) : failed;
@@ -144,7 +146,12 @@ export function createController(deps: ControllerDeps): Controller {
     const begun = await apply(state, { type: 'SUBMIT_BEGIN', key, now }, settings);
     if (begun.rejected) return begun.state;
 
-    const request: SubmitRequest = { text: settings.prompt, expectedPath: state.conversation ?? '', expectedKey: key };
+    const request: SubmitRequest = {
+      text: settings.prompt,
+      expectedPath: state.conversation ?? '',
+      expectedKey: key,
+      checkMarker: settings.stopOnMarker && state.markerAcknowledgedKey !== key,
+    };
     const result = await safe(tabs.submit(tabId, key, request), null);
     return applyResult(begun.state, key, result, settings);
   }

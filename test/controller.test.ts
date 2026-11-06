@@ -121,7 +121,7 @@ test('1-8: start, wait for completion and the delay, send the prompt, and repeat
   assert.equal(h.submits.length, 0, '4: nothing before the delay ends');
   await h.advance(1000);
   assert.equal(h.submits.length, 1, '5-6: sent when the delay ends');
-  assert.deepEqual(h.submits[0], { key: key('m1'), request: { text: 'Continue per AUTOPILOT.md.', expectedPath: '/c/abc', expectedKey: key('m1') } });
+  assert.deepEqual(h.submits[0], { key: key('m1'), request: { text: 'Continue per AUTOPILOT.md.', expectedPath: '/c/abc', expectedKey: key('m1'), checkMarker: false } });
   session = await h.session();
   assert.equal(session.cycles, 1);
   assert.equal(session.phase, 'watching');
@@ -842,4 +842,102 @@ test('the diagnostic report still works when the ChatGPT tab does not answer', a
   const report = JSON.parse(response.report!);
   assert.deepEqual(report.page, { answered: false });
   assert.equal(report.lastSendAttempt, null);
+});
+
+// --- M3: status marker in the state machine (setting on/off), prechecks, Resume override ---
+
+const marker = (m: 'none' | 'continue' | 'complete' | 'blocked' | 'unclear') => ({ statusMarker: m, answerContentElements: 1 });
+
+async function finished(h: ReturnType<typeof harness>, id: string, m: Parameters<typeof marker>[0]) {
+  await h.see(obs('generating', key(id)));
+  await h.see(obs('complete', key(id), CONVO, marker(m)));
+}
+
+test('M3 on: MILESTONE COMPLETE stops (Finished), nothing is sent', async () => {
+  const h = harness(undefined, { stopOnMarker: true });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'complete');
+  const s = await h.session();
+  assert.equal(s.run, 'stopped');
+  assert.equal(s.reason, 'marker_complete');
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 0);
+});
+
+test('M3 on: BLOCKED and an unclear line pause; nothing is sent', async () => {
+  for (const [m, reason] of [['blocked', 'marker_blocked'], ['unclear', 'marker_unclear']] as const) {
+    const h = harness(undefined, { stopOnMarker: true });
+    ok(await h.ui('START'));
+    await finished(h, 'm1', m);
+    const s = await h.session();
+    assert.equal(s.run, 'paused', m);
+    assert.equal(s.reason, reason);
+    await h.advance(60_000);
+    assert.equal(h.submits.length, 0, m);
+  }
+});
+
+test('M3 on: CONTINUE or no marker continue as before', async () => {
+  for (const m of ['continue', 'none'] as const) {
+    const h = harness(undefined, { stopOnMarker: true });
+    ok(await h.ui('START'));
+    await finished(h, 'm1', m);
+    await h.advance(5000);
+    assert.equal(h.submits.length, 1, m);
+    assert.equal(h.submits[0]!.request.checkMarker, true, 'the page re-checks the marker before sending');
+  }
+});
+
+test('M3 off: a marker signal is ignored entirely', async () => {
+  const h = harness(undefined, { stopOnMarker: false });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'complete');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  assert.equal(h.submits[0]!.request.checkMarker, false);
+});
+
+test('M3 on: a marker that appears during the delay is caught by the check before sending', async () => {
+  const h = harness(undefined, { stopOnMarker: true });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'none');
+  h.page.observation = obs('complete', key('m1'), CONVO, marker('complete'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 0);
+  assert.equal((await h.session()).reason, 'marker_complete');
+});
+
+test('M3 on: the page\'s own check refusing on a marker pauses too', async () => {
+  const h = harness(undefined, { stopOnMarker: true });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'none');
+  h.page.onSubmit = () => ({ outcome: 'refused', reason: 'marker_blocked' });
+  await h.advance(5000);
+  const s = await h.session();
+  assert.equal(s.reason, 'marker_blocked');
+  assert.ok(!s.answeredKeys.includes(key('m1')), 'nothing was typed');
+});
+
+test('M3 on: Resume after BLOCKED continues that answer once; a later BLOCKED pauses again', async () => {
+  const h = harness(undefined, { stopOnMarker: true });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'blocked');
+  assert.equal((await h.session()).reason, 'marker_blocked');
+  ok(await h.ui('RESUME'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1, 'your Resume overrides that one marker');
+  assert.equal(h.submits[0]!.request.checkMarker, false);
+  await finished(h, 'm2', 'blocked');
+  assert.equal((await h.session()).reason, 'marker_blocked');
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 1);
+});
+
+test('M3: no answer text can reach stored state; only the marker result is used', async () => {
+  const h = harness(undefined, { stopOnMarker: true });
+  ok(await h.ui('START'));
+  await finished(h, 'm1', 'blocked');
+  const stored = JSON.stringify(h.storage.data);
+  for (const word of ['AUTOPILOT STATUS', 'BLOCKED\n']) assert.ok(!stored.includes(word), word);
+  assert.ok(stored.includes('ChatGPT reports it is blocked'), 'the log line is the extension\'s fixed text');
 });

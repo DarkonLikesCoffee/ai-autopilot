@@ -130,6 +130,13 @@ half-written one pauses. Pausing on a missing marker too (a stricter mode) could
 be added later as a second setting if the owner wants it; it is not part of
 this design.
 
+**Resume after a marker pause** (added during implementation, 2026-11-06, for
+user control): after BLOCKED or an unclear line, the latest answer still says
+the same, so a plain Resume would pause again at once. Resume is therefore your
+explicit override **for that one response**: it is continued once, and every
+later answer is checked again. The response is identified by its key, never by
+its text.
+
 Pause/Stop by the user always takes precedence, and existing safeguards
 (notices, composer text, conversation switch, …) are unchanged.
 

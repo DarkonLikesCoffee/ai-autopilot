@@ -30,3 +30,12 @@ test('normalization keeps valid fields and resets only invalid ones', () => {
   assert.deepEqual(normalizeSettings([1, 2]), defaultSettings());
   assert.equal(normalizeSettings({ prompt: '' }).prompt, DEFAULT_PROMPT);
 });
+
+test('M3: "Stop on status marker" is off by default and stays off for older stored settings', async () => {
+  const { defaultSettings, normalizeSettings } = await import('../src/shared/settings.ts');
+  assert.equal(defaultSettings().stopOnMarker, false);
+  const { stopOnMarker: _omit, ...older } = defaultSettings();
+  assert.equal(normalizeSettings(older).stopOnMarker, false);
+  assert.equal(normalizeSettings({ ...older, stopOnMarker: 'yes' }).stopOnMarker, false, 'only true turns it on');
+  assert.equal(normalizeSettings({ ...older, stopOnMarker: true }).stopOnMarker, true);
+});

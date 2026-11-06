@@ -22,6 +22,9 @@ const EXPECTED: Record<HaltReason, 'resume' | 'fix' | 'finished'> = {
   unrecognized_notice: 'fix',
   no_response: 'fix',
   no_new_answer: 'fix',
+  marker_complete: 'finished',
+  marker_blocked: 'fix',
+  marker_unclear: 'fix',
 };
 
 test('every halt reason has guidance of the expected kind', () => {

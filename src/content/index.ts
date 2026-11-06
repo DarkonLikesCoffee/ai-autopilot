@@ -60,8 +60,10 @@ function start(): void {
   );
   /** The last send-step record, for the diagnostic report (GET_SEND_DIAGNOSTIC). */
   let lastSendDiagnostic: SendDiagnostic | null = null;
+  /** M3: whether to read the latest finished answer's status marker (the setting; off by default). */
+  let stopOnMarker = false;
   const readPage = () => {
-    const observation = observePage(document, location.href, DEFAULT_SELECTORS);
+    const observation = observePage(document, location.href, DEFAULT_SELECTORS, { readMarker: stopOnMarker });
     if (diagnosticsEnabled(safeLocalStorage())) logDiagnostic(collectDiagnostic(document, observation));
     return observation;
   };
@@ -73,8 +75,15 @@ function start(): void {
   });
 
   // The completion confirmation delay is a setting.
-  const applySettings = (raw: unknown) => detector.setSettleMs(normalizeSettings(raw).confirmSeconds * 1000);
-  void loadSettings(chrome.storage.local).then((settings) => detector.setSettleMs(settings.confirmSeconds * 1000)).catch(() => undefined);
+  const useSettings = (settings: ReturnType<typeof normalizeSettings>) => {
+    detector.setSettleMs(settings.confirmSeconds * 1000);
+    if (stopOnMarker !== settings.stopOnMarker) {
+      stopOnMarker = settings.stopOnMarker;
+      detector.schedule(); // re-read with the new setting
+    }
+  };
+  const applySettings = (raw: unknown) => useSettings(normalizeSettings(raw));
+  void loadSettings(chrome.storage.local).then(useSettings).catch(() => undefined);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[SETTINGS_KEY]) applySettings(changes[SETTINGS_KEY].newValue);
   });

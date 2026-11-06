@@ -47,7 +47,8 @@ export function sameReport(a: PageObservation | null, b: PageObservation): boole
     a.responseKey === b.responseKey &&
     a.url === b.url &&
     // An unrecognized notice appearing or going away is reported at once.
-    a.signals.unrecognizedNoticeFound === b.signals.unrecognizedNoticeFound
+    a.signals.unrecognizedNoticeFound === b.signals.unrecognizedNoticeFound &&
+    a.signals.statusMarker === b.signals.statusMarker
   );
 }
 

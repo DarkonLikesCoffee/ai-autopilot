@@ -6,7 +6,7 @@
 import type { SelectorConfig } from './selectors.ts';
 import { isVisible, observePage } from './page.ts';
 import type { PageSignals } from '../shared/types.ts';
-import type { PrecheckFailure } from '../shared/session.ts';
+import { markerFailure, type PrecheckFailure } from '../shared/session.ts';
 import { findSendButton } from './sendButton.ts';
 import { collectSendDiagnostic, type InsertionInfo, type SendDiagnostic } from './sendDiagnostics.ts';
 
@@ -16,6 +16,8 @@ export interface SubmitRequest {
   expectedPath: string;
   /** The response being continued; if a different one is now the latest, nothing is sent. */
   expectedKey: string;
+  /** M3: refuse if the answer's status marker says complete, blocked or unclear (setting on, not overridden by Resume). */
+  checkMarker?: boolean;
 }
 
 export type SubmitFailure = 'no_composer' | 'composer_disabled' | 'insert_failed' | 'send_unavailable' | 'tab_suspended' | 'not_sent';
@@ -164,7 +166,7 @@ export function precheck(doc: Document, url: string, selectors: SelectorConfig, 
     return 'conversation_changed';
   }
   if (path !== request.expectedPath) return 'conversation_changed';
-  const observation = observePage(doc, url, selectors);
+  const observation = observePage(doc, url, selectors, { readMarker: request.checkMarker === true });
   if (observation.status === 'usage_limit') return 'usage_limit';
   if (observation.signals.authRequired) return 'auth_required';
   if (observation.status === 'generating') return 'generating';
@@ -172,6 +174,8 @@ export function precheck(doc: Document, url: string, selectors: SelectorConfig, 
   if (observation.signals.composerHasText) return 'composer_has_text';
   if (observation.status !== 'complete') return 'not_complete';
   if (observation.responseKey !== request.expectedKey) return 'response_changed';
+  const marker = markerFailure(observation.signals.statusMarker);
+  if (request.checkMarker === true && marker) return marker;
   return null;
 }
 
