@@ -34,6 +34,14 @@ export interface SelectorConfig {
    * noticeRegion on purpose: role="status" and toasts are routine (e.g. "Copied").
    */
   alertRegion: string[];
+  /**
+   * The rendered answer content inside an assistant message (M3 status marker;
+   * R9). The marker is read only if exactly one visible element matches inside
+   * the latest answer; otherwise the result is "unclear" and nothing is read.
+   * [UNVERIFIED] `.markdown` has not been observed live in this project
+   * (live row M3-L0); if it is wrong, the feature pauses and never guesses.
+   */
+  answerContent: string[];
   /** Any element matching this is a conversation message; notices inside it are ignored. */
   messageContainer: string;
 }
@@ -82,6 +90,7 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     '[class*="border-token-surface-error"]',
   ],
   alertRegion: ['[role="alert"]', '.text-token-text-error', '[class*="border-token-surface-error"]', '[data-testid*="error"]'],
+  answerContent: ['.markdown'],
   messageContainer: '[data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
 };
 

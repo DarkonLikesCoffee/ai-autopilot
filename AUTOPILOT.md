@@ -164,8 +164,8 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 
 ### Definition of done (M3)
 
-- [ ] **Reader** (`src/content/statusMarker.ts`): exact grammar, reading rules 1–7, isolation of the visible answer content (R9), returning an enum only; unit tests for every case in the design.
-- [ ] **Privacy enforcement P1–P6**: read counters, SECRET tests across observation, diagnostics, log, session and report; source-scan test; no module state.
+- [x] **Reader** (`src/content/statusMarker.ts`): [VERIFIED] T7 part 1. Exact grammar (a case-insensitive `AUTOPILOT STATUS:` prefix marks an attempt; only the three exact lines are valid), last non-empty line, exactly one attempt, isolation of the visible answer content (R9: exactly one visible `answerContent` element, else `unclear` with no text read; hidden, aria-hidden, 1px, closed details, controls and labels, status/alert, code, pre and blockquote subtrees skipped), any exception → `unclear`. Returns `{ marker, contentElements }` only. Not wired in yet. `test/statusMarker.test.ts` (10 tests).
+- [ ] **Privacy enforcement P1–P6**: read counters, SECRET tests across observation, diagnostics, log, session and report; source-scan test; no module state. [VERIFIED] so far: the source-scan (`test/privacy.test.ts`: every page-text read in `src/content` is reviewed and counted) and no module state (P4, P6); the reader returns no text (P2 for the reader). Remaining with part 2: observation, diagnostics, log, session and report.
 - [ ] **Behaviour**: an off-by-default setting; COMPLETE stops, BLOCKED pauses, unclear pauses, missing or CONTINUE continues; checked again before sending; guidance for the new reasons.
 - [ ] **Docs**: README privacy wording (R10), principle 10 exception (`CLAUDE.md`, section 3 here), template comment, live rows.
 - [ ] **Checks**: `npm run check`, CI `e2e` incl. M3 E2E scenarios.
@@ -269,11 +269,12 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | T11 (M2): halt guidance (Resume when ready / Fix first / Finished, with one action each) in the panel and the report. All M2 code items done; M2 waits only for the owner's live report export. | [VERIFIED] in tests below. | `npm run check` PASS (149 tests); `npm run e2e` PASS incl. the guidance check. |
 | 2026-11-05 | Owner chose M3 (stop protocol) with strict privacy requirements. Technical design written and checked against the architecture and principles: `docs/design/m3-stop-protocol.md` (exact three-line grammar reused from the template, reading rules, outcomes, opt-in setting, privacy enforcement P1–P5 incl. a source-scan test, tests, risks). No implementation. | Design only. | `npm run check` PASS. |
 | 2026-11-06 | Owner: M2 live check done (guidance made sense; diagnostic report had no conversation text), so **M2 complete**. Owner approved the M3 design with R9 (visible answer content only, else `unclear`) and R10 (precise privacy guarantee); both added to the design (isolation rules, `.markdown` marked unverified with live row M3-L0, P6 no retained state). M3 is current. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
+| 2026-11-06 | T7 part 1 (M3): status-marker reader with R9 isolation and R10 privacy; `answerContent: ['.markdown']` added to `selectors.ts`, marked unverified (live row M3-L0); source-scan privacy test for all page-text reads. Not wired in: no behaviour change. | [VERIFIED] in tests below. | `npm run check` PASS (161 tests); `npm run e2e` PASS. |
 
 ## 12. Exact next action
 
-- **Next task (cloud):** T7 part 1: `src/content/statusMarker.ts` (reader only, not wired in) with the unit tests for the grammar, the reading rules, isolation (R9) and privacy (P1, P4, P6).
-- **Then:** part 2 (setting, state machine, prechecks, report and diagnostics), part 3 (E2E, README/CLAUDE.md/template wording, live rows).
+- **Next task (cloud):** T7 part 2: wire the reader in. `stopOnMarker` setting (off by default) read by the content script; `signals.statusMarker` (enum, validated) computed only when on and complete; detector reports changes; state machine: complete → stopped, blocked → paused, unclear → paused, checked again in both prechecks; halt reasons with guidance; diagnostic report and console diagnostics get the enum and the content-element count only; SECRET tests across all of them.
+- **Then:** part 3 (E2E, README/CLAUDE.md/template wording, live rows).
 - **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol
