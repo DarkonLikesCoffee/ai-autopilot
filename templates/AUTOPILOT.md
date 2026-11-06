@@ -178,6 +178,12 @@ Older sessions: <one-line summary, or "none">.
 - **First step:** <the first concrete action>
 - **Status line for the reply:** `AUTOPILOT STATUS: CONTINUE`
 
-<!-- Status lines are for the owner reading the conversation; the extension does
-not parse them. Use CONTINUE, MILESTONE COMPLETE or BLOCKED. -->
+<!-- End every reply with exactly one of these lines, on its own, as the very
+last line, outside code blocks and quotes, with no other words or punctuation:
+  AUTOPILOT STATUS: CONTINUE
+  AUTOPILOT STATUS: MILESTONE COMPLETE
+  AUTOPILOT STATUS: BLOCKED
+If the extension's "Stop on status marker" setting is on, MILESTONE COMPLETE
+stops it, BLOCKED pauses it, and any other wording of a status line pauses it.
+Without the setting the lines are only for the owner reading the conversation. -->
 

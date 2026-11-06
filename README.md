@@ -120,9 +120,48 @@ undocumented APIs, no session tokens, no rate-limit workarounds.
 | `sidePanel` | The side panel view |
 
 The extension does not access GitHub, cookies or any other site, has no backend
-and no external AI service, and stores no credentials. It never reads, stores or
-sends the text of your conversation: it reads page structure (buttons, message
-counts and ids, notices) and whether the message box is empty.
+and no external AI service, and stores no credentials. It never stores, sends or
+logs the text of your conversation. By default it does not read it either: it
+reads page structure (buttons, message counts and ids, notices) and whether the
+message box is empty.
+
+**The one exception is opt-in.** When **Stop on status marker** is on, Autopilot reads the visible text of the
+latest finished answer only temporarily, in the ChatGPT tab, to compare its last
+line with three fixed status lines. That text is **never persisted** (not in
+extension storage, not in the session), **never transmitted** (not to the
+background worker, not to any server), **never logged** (not in the activity
+log, console diagnostics, notifications or diagnostic reports) and **never
+retained in application state**. Only the result of the comparison leaves that
+moment: one of `none`, `continue`, `complete`, `blocked`, `unclear`. When the
+setting is off (the default), the answer is not read at all.
+
+Enforced by tests: a source scan lists every place that reads page text, and
+fails if a new one appears; an answer full of a test secret never reaches the
+observation, diagnostics, report or stored state (`test/privacy.test.ts`,
+`test/statusMarker.test.ts`, `test/markerFlow.test.ts`).
+
+## Stop on status marker (optional)
+
+Off by default (Settings → **Stop on status marker**). When on, Autopilot looks
+at the **last non-empty line** of ChatGPT's latest finished answer, outside code
+blocks and quotes, and acts only on these exact lines:
+
+| Last line of the answer | What Autopilot does |
+|---|---|
+| `AUTOPILOT STATUS: MILESTONE COMPLETE` | Stops (*Finished*) |
+| `AUTOPILOT STATUS: BLOCKED` | Pauses (*Fix first*) |
+| `AUTOPILOT STATUS: CONTINUE`, or no status line | Continues as usual |
+| A malformed or ambiguous status line (other wording, a period, two status lines, one that is not last) | Pauses (*Fix first*) |
+
+- Only the visible answer content is read: hidden, collapsed and interface
+  elements, code, quotes and tool output are skipped. If the answer content
+  cannot be isolated, the result is "unclear" and Autopilot pauses.
+- After a BLOCKED or unclear pause, **Resume** is your override for that one
+  answer: it is continued once; later answers are checked again.
+- A status line is ChatGPT's own report, not proof that the work is correct.
+- [UNVERIFIED] Isolating the answer content relies on ChatGPT's `.markdown`
+  element, not yet confirmed on the live site; if it is not found, every
+  finished answer pauses as "unclear" rather than being guessed.
 
 ## AUTOPILOT.md
 

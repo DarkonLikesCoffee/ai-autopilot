@@ -103,7 +103,11 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
         setTimeout(() => { generating = true; renderControls(); setTimeout(tick, 150); }, 300);
         return;
       }
-      if (chunks === 12) { generating = false; renderControls(); return; }
+      if (chunks === 12) {
+        // M3: a test may give the finished answer real answer content (a .markdown block, a status line).
+        if (window.__nextAnswerHtml) { answer.innerHTML = window.__nextAnswerHtml; window.__nextAnswerHtml = null; }
+        generating = false; renderControls(); return;
+      }
       setTimeout(tick, 150);
     };
     setTimeout(tick, 150);
@@ -272,6 +276,48 @@ try {
   await waitFor('navigation safeguard', async () => (await session()).reason === 'conversation_changed');
   await sleep(1500);
   check('14: navigating away prevents the continuation', (await messages(navChat)).length === 1);
+  await stop();
+
+  // ---- M3: stop on an exact status marker (setting on) ----
+  const md = (...parts) => `<div class="markdown">${parts.join('')}</div>`;
+  const COMPLETE = '<p>AUTOPILOT STATUS: MILESTONE COMPLETE</p>';
+  await saveSettings(async () => { await panel.check('#s-stop-marker'); });
+  const markerChat = await openConversation('/c/e2e-marker');
+  await start(markerChat);
+  // 1. The marker only inside a code block is ignored: the continuation is sent.
+  await markerChat.evaluate((html) => { window.__nextAnswerHtml = html; }, md('<p>Example of the protocol:</p><pre><code>AUTOPILOT STATUS: MILESTONE COMPLETE</code></pre>'));
+  await userSends(markerChat, 'Marker test');
+  await waitFor('continuation after a code-block marker', async () => (await messages(markerChat)).length === 2, 30000);
+  // 2. The continuation's answer ends with the exact line: Autopilot stops, Finished, nothing more is sent.
+  await markerChat.evaluate((html) => { window.__nextAnswerHtml = html; }, md('<p>All tasks are verified.</p>', COMPLETE));
+  await waitFor('stop on MILESTONE COMPLETE', async () => (await session()).reason === 'marker_complete', 30000);
+  await sleep(5000);
+  const guidanceAfterComplete = await panel.evaluate(() => document.getElementById('status-guidance').textContent);
+  check('M3: a marker in a code block is ignored; MILESTONE COMPLETE on the last line stops with "Finished", nothing more sent',
+    (await session()).run === 'stopped' && (await messages(markerChat)).length === 2 && /^Finished:/.test(guidanceAfterComplete),
+    JSON.stringify({ messages: (await messages(markerChat)).length, guidance: guidanceAfterComplete.slice(0, 30) }));
+
+  // 3. BLOCKED pauses; Resume is the override for that one answer.
+  const blockedChat = await openConversation('/c/e2e-blocked');
+  await start(blockedChat);
+  await blockedChat.evaluate((html) => { window.__nextAnswerHtml = html; }, md('<p>I need the API key to continue.</p><p>AUTOPILOT STATUS: BLOCKED</p>'));
+  await userSends(blockedChat, 'Blocked test');
+  await waitFor('pause on BLOCKED', async () => (await session()).reason === 'marker_blocked', 30000);
+  await sleep(5000);
+  const sentWhileBlocked = (await messages(blockedChat)).length;
+  await panel.click('#btn-resume');
+  await waitFor('continuation after Resume', async () => (await messages(blockedChat)).length === 2, 30000);
+  check('M3: BLOCKED pauses and nothing is sent; Resume continues that answer once', sentWhileBlocked === 1 && (await messages(blockedChat))[1] === PROMPT);
+  await stop();
+
+  // 4. With the setting off, the same line is not acted on.
+  await saveSettings(async () => { await panel.uncheck('#s-stop-marker'); });
+  const offChat = await openConversation('/c/e2e-marker-off');
+  await start(offChat);
+  await offChat.evaluate((html) => { window.__nextAnswerHtml = html; }, md('<p>Done.</p>', COMPLETE));
+  await userSends(offChat, 'Marker off test');
+  await waitFor('continuation with the setting off', async () => (await messages(offChat)).length === 2, 30000);
+  check('M3: with "Stop on status marker" off, a MILESTONE COMPLETE line is ignored', (await session()).reason !== 'marker_complete');
   await stop();
 
   // ---- Live es-ES structure: the only send control is aria-label="Enviar" type="submit" ----
