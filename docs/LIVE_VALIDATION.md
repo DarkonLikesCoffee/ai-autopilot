@@ -235,6 +235,22 @@ the notice's exact text from the page and its interface language into an
 issue. Only texts observed this way are added to the notice patterns (with a
 test), so that notice can be shown with its proper reason.
 
+## M3: Stop on status marker (setting on)
+
+Turn on **Stop on status marker** in Settings and diagnostics in the tab
+(`localStorage.setItem('chatgpt-autopilot:debug', '1')`, reload). In a throwaway
+conversation, ask ChatGPT to end its answers as described in each row.
+
+| # | Do | Expect |
+|---|---|---|
+| M3-L0 | Any finished answer; look at the `Page detection` console entry | `answerContentElements: 1` (count only, no text). If it is 0 or more, the answer content selector does not fit the live page: record the value; every answer then pauses as "unclear" |
+| M3-L1 | Setting **off**; an answer ending in `AUTOPILOT STATUS: MILESTONE COMPLETE` | Continues as before (the answer is not read) |
+| M3-L2 | Answer ending in `AUTOPILOT STATUS: CONTINUE` | Continues |
+| M3-L3 | Answer ending in `AUTOPILOT STATUS: MILESTONE COMPLETE` | Stopped, *Finished*; nothing sent |
+| M3-L4 | Answer ending in `AUTOPILOT STATUS: BLOCKED`; then press Resume | Paused, *Fix first*; nothing sent. Resume sends one continuation |
+| M3-L5 | Answer that shows the marker only inside a code block | Continues (quoted text is ignored) |
+| M3-L6 | After L3/L4, click **Copy diagnostic report** | It shows `statusMarker` and `stopOnMarker` only; no answer text |
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

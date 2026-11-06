@@ -14,7 +14,7 @@
 ## 2. Product architecture and boundaries
 
 - [VERIFIED] ChatGPT provides the reasoning and decides what project work to perform; this extension is a continuation trigger, not an agent. Evidence: `README.md`.
-- [VERIFIED] The extension observes ChatGPT page structure and composer state, not conversation text. Evidence: `README.md`, `src/content/page.ts`.
+- [VERIFIED] The extension observes ChatGPT page structure and composer state, not conversation text. **Exception (M3, opt-in, off by default):** with "Stop on status marker" on, it reads the visible text of the latest finished answer only temporarily, to compare its last line with three fixed lines; that text is never persisted, transmitted, logged or retained in application state. Evidence: `README.md`, `src/content/page.ts`, `src/content/statusMarker.ts`, `test/privacy.test.ts`.
 - [VERIFIED] The extension uses the normal ChatGPT UI to type and send; it does not use undocumented APIs or session tokens. Evidence: `README.md`, `src/content/composer.ts`.
 - [VERIFIED] The project uses TypeScript and Chrome Manifest V3. Evidence: `package.json`, extension source and build configuration.
 - [VERIFIED] The continuation state machine is separated from Chrome API orchestration. Evidence: `src/shared/session.ts`, `src/background/controller.ts`.
@@ -33,7 +33,7 @@
 7. Never send to a conversation other than the one the user started.
 8. Do not bypass usage limits, authentication, browser security or anti-abuse controls.
 9. No undocumented APIs, cookie/session-token extraction, backend, paid service, API key or local model without owner approval.
-10. Keep privacy minimal: do not read, store or transmit conversation contents.
+10. Keep privacy minimal: do not read, store or transmit conversation contents. **Only exception (D10, owner decision 2026-11-05/06):** the opt-in status-marker check may read the visible text of the latest finished answer temporarily, for the exact comparison only; that text is never persisted, transmitted, logged or retained in application state. Any other reading of conversation text needs a new owner decision.
 
 ## 4. Current implementation snapshot
 
@@ -167,9 +167,9 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 - [x] **Reader** (`src/content/statusMarker.ts`): [VERIFIED] T7 part 1. Exact grammar (a case-insensitive `AUTOPILOT STATUS:` prefix marks an attempt; only the three exact lines are valid), last non-empty line, exactly one attempt, isolation of the visible answer content (R9: exactly one visible `answerContent` element, else `unclear` with no text read; hidden, aria-hidden, 1px, closed details, controls and labels, status/alert, code, pre and blockquote subtrees skipped), any exception → `unclear`. Returns `{ marker, contentElements }` only. Not wired in yet. `test/statusMarker.test.ts` (10 tests).
 - [x] **Privacy enforcement P1–P6**: [VERIFIED] T7 parts 1–2. P1: no text read with the setting off, while generating, or from older answers and user messages (read counters). P2: the observation carries only the enum and a count, and the validator rejects anything else. A SECRET answer reaches no observation, console diagnostic, report or stored state. P3: the report has only the enum and the setting. P4: source scan. P5: fixed halt texts. P6: no module state.
 - [x] **Behaviour**: [VERIFIED] T7 part 2. The setting is off by default (older stored settings stay off). COMPLETE stops (*Finished*); BLOCKED and unclear pause (*Fix first*); missing or CONTINUE continue. The marker is checked again in the background precheck and in the page's own precheck. **Resume after a marker pause is your override for that one response** (it is continued once; later answers are checked again).
-- [ ] **Docs**: README privacy wording (R10), principle 10 exception (`CLAUDE.md`, section 3 here), template comment, live rows.
-- [ ] **Checks**: `npm run check`, CI `e2e` incl. M3 E2E scenarios.
-- [ ] **Live** (owner): M3-L0 (exactly one answer content element on the live page) and rows 1–5 of the design.
+- [x] **Docs**: [VERIFIED] T7 part 3. README privacy wording (R10) and a "Stop on status marker" section; the exception added to principle 10 (section 3), section 2 and `CLAUDE.md`; the template now states the exact last-line rule; live rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`.
+- [x] **Checks**: [VERIFIED] `npm run check` (176 tests); `npm run e2e` incl. three M3 scenarios (code-block marker ignored, then COMPLETE stops with *Finished*; BLOCKED pauses and Resume overrides once; setting off ignores the line).
+- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. M3-L0 confirms the unverified `.markdown` answer-content selector.
 
 ## 6. Prioritized roadmap
 
@@ -192,7 +192,7 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T4 (P0): Hidden/background tab behavior.** Done 2026-11-05: wall-clock bounds on the send step (#8); live S5/S6 passed (runs 3–4). Real frozen or discarded tabs were not observed; the bounds remain the safeguard.
 - [x] **T5 (P1): Diagnostics.** Done 2026-11-04. Audit of the activity log against the five stages: confirmed completion + scheduled continuation ("Response complete. Continuation N in Xs."), submission attempt ("Sending continuation N."), confirmed submission ("Continuation N sent.") were logged; **generation observed was never logged**, so a stalled run could not show whether ChatGPT was ever seen working. Added "ChatGPT is generating a response." once per response. A completion detected but not yet confirmed exists only in the content script (the panel shows the live ChatGPT state; the opt-in console diagnostics show it in detail); not added to the log, to avoid a new message type for a transient state. Test: a full cycle logs each stage once, in order. No conversation text in any message.
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
-- [ ] **T7 (P1, M3): Structured stop protocol.** Design approved 2026-11-06 (R1–R10). Implementing in small PRs: (1) reader and privacy tests; (2) setting, state machine and prechecks; (3) E2E and docs. Status text is not proof that the work itself is correct.
+- [x] **T7 (P1, M3): Structured stop protocol.** Implemented 2026-11-06 in #24 (reader), #25 (wiring) and part 3 (E2E, docs). Live validation (M3-L0 to L6) pending. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
 - [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
@@ -271,12 +271,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-06 | Owner: M2 live check done (guidance made sense; diagnostic report had no conversation text), so **M2 complete**. Owner approved the M3 design with R9 (visible answer content only, else `unclear`) and R10 (precise privacy guarantee); both added to the design (isolation rules, `.markdown` marked unverified with live row M3-L0, P6 no retained state). M3 is current. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-06 | T7 part 1 (M3): status-marker reader with R9 isolation and R10 privacy; `answerContent: ['.markdown']` added to `selectors.ts`, marked unverified (live row M3-L0); source-scan privacy test for all page-text reads. Not wired in: no behaviour change. | [VERIFIED] in tests below. | `npm run check` PASS (161 tests); `npm run e2e` PASS. |
 | 2026-11-06 | T7 part 2 (M3): reader wired in. `stopOnMarker` setting and panel checkbox (off by default, with the privacy note); `signals.statusMarker` and `answerContentElements` (enum and count, validated); read only with the setting on and a finished answer; detector reports changes; state machine and both prechecks act on it; three halt reasons with guidance; report shows the setting and the enum. Resume after BLOCKED or unclear overrides that one response (an addition to the design, for user control; recorded here). | [VERIFIED] in tests below. | `npm run check` PASS (176 tests); `npm run e2e` PASS. |
+| 2026-11-06 | T7 part 3 (M3): E2E scenarios (fake page with real `.markdown` answer content) and docs: R10 privacy wording in README, `CLAUDE.md`, sections 2–3; README section on the feature; template states the exact last-line rule; live rows M3-L0 to M3-L6. All M3 code and doc items done; M3 waits for live validation. | [VERIFIED] in tests below. | `npm run check` PASS (176 tests); `npm run e2e` PASS incl. 3 M3 scenarios. |
 
 ## 12. Exact next action
 
-- **Next task (cloud):** T7 part 3: E2E scenarios on the fake page (COMPLETE stops with *Finished*; the same line in a code block, or with the setting off, does not; BLOCKED pauses; Resume overrides once). Docs: README privacy wording (R10), principle 10 exception in `CLAUDE.md` and section 3, template comment, live rows M3-L0 to M3-L5.
-- **Then (owner):** live rows M3-L0 to M3-L5.
-- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
+- **Owner (live):** rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md` (Stop on status marker on, diagnostics on). M3-L0 first: if `answerContentElements` is not 1, send the `Page detection` entry; the answer-content selector is then fixed from that structure, with a test.
+- **Cloud, when results arrive:** record them, fix anything that fails, reassess M3 against its definition of done.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for M3 live validation.
 
 ## 13. Update protocol
 

@@ -93,7 +93,7 @@ Do not:
 - add features that do not support a roadmap milestone;
 - make broad refactors while fixing a narrow bug;
 - increase permissions without a demonstrated need;
-- add telemetry or collect conversation contents;
+- add telemetry or collect conversation contents (the only exception is the opt-in status-marker check of M3: it reads the visible text of the latest finished answer temporarily, for the exact comparison only, and never persists, transmits, logs or retains it; widening this needs an owner decision, and `test/privacy.test.ts` must stay green);
 - silently change defaults or user-facing behavior;
 - declare the project finished just because the current checklist is empty.
 
