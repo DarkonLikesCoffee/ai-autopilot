@@ -211,6 +211,13 @@ and record the result as Run 5.
   | R5 (no unexpected pause from the new notice rules) | PASS: no unexpected pauses |
 - Activity log: not included in the report.
 
+### M2 live check — reported 2026-11-06 — PASS
+
+- Build: `main` after #21 (exact commit not stated).
+- The pause guidance in the panel made sense (owner).
+- **Copy diagnostic report**: the report was inspected and contained no
+  conversation text (owner).
+
 ## Unrecognized notices (any language)
 
 Autopilot recognizes usage-limit, login and error notices by their **English**
