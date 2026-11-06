@@ -142,7 +142,7 @@ None of this is reliable evidence of ChatGPT's current wording, so **no Spanish 
 
 The definition of done requires validation "against the live ChatGPT site"; it does not require each interface language. M1 was validated live on es-ES. **Documented exception:** English (L2) and all other languages are not live-verified. English uses the original selectors, starting with the language-independent `data-testid`/`id`, but that is unverified live. README says so.
 
-## 5b. Current milestone: M2 — Recovery and observability
+## 5b. Milestone M2 — Recovery and observability — **COMPLETE (2026-11-06)**
 
 Goal: when something goes wrong, the user (and a developer helping them) can see what happened, know whether to simply resume or fix something first, and hand over a complete technical report in one step, all without conversation text.
 
@@ -156,15 +156,28 @@ Why now (evidence from M1): every live investigation (runs 1–5) needed the own
 - [x] **Recovery after worker suspension, browser restart and stale storage:** [VERIFIED] T6 and tests. Extension update: covered by the schema-version test (state restored as stopped); a live update was not observed.
 - [x] **Storage schema/version tests:** [VERIFIED] T6.
 - [x] **Checks:** [VERIFIED] `npm run check` (149 tests) and `npm run e2e` pass, covering the export and the guidance.
-- [ ] **Live:** the owner exports one report from the real ChatGPT tab and confirms it contains no conversation text.
+- [x] **Live:** [VERIFIED] owner, 2026-11-06: the pause guidance made sense, and an exported diagnostic report contained no conversation text (`docs/LIVE_VALIDATION.md`, M2 live check).
+
+## 5c. Current milestone: M3 — Stop on an explicit status marker
+
+Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** with decisions (a)–(d), plus R9 (visible answer content only; if it cannot be isolated, `unclear`) and R10 (answer text never persisted, transmitted, logged or retained in application state).
+
+### Definition of done (M3)
+
+- [ ] **Reader** (`src/content/statusMarker.ts`): exact grammar, reading rules 1–7, isolation of the visible answer content (R9), returning an enum only; unit tests for every case in the design.
+- [ ] **Privacy enforcement P1–P6**: read counters, SECRET tests across observation, diagnostics, log, session and report; source-scan test; no module state.
+- [ ] **Behaviour**: an off-by-default setting; COMPLETE stops, BLOCKED pauses, unclear pauses, missing or CONTINUE continues; checked again before sending; guidance for the new reasons.
+- [ ] **Docs**: README privacy wording (R10), principle 10 exception (`CLAUDE.md`, section 3 here), template comment, live rows.
+- [ ] **Checks**: `npm run check`, CI `e2e` incl. M3 E2E scenarios.
+- [ ] **Live** (owner): M3-L0 (exactly one answer content element on the live page) and rows 1–5 of the design.
 
 ## 6. Prioritized roadmap
 
 See `docs/ROADMAP.md` for milestone details. Current order:
 
 1. ~~**P0 — M1 reliability**~~ — **complete 2026-11-05.**
-2. **P1 — M2 recovery and observability (current).** Most of it was delivered during M1 (stage log T5, text-free diagnostics #3/#11, restart recovery and schema tests T6). Remaining: an exportable text-free diagnostic report, and a clear recoverable-vs-terminal distinction. See section 5b.
-3. **P1 — M3 stopping and control — next, chosen by the owner (2026-11-05).** Opt-in reading of the latest finished answer, only to match one of three exact marker lines; design in `docs/design/m3-stop-protocol.md`, awaiting approval.
+2. ~~**P1 — M2 recovery and observability**~~: **complete 2026-11-06** (T10, T11, live check).
+3. **P1 — M3 stopping and control (current).** Design approved 2026-11-06; see section 5c.
 4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
 5. **P3 — M5 product polish:** onboarding, settings UX, accessibility, packaging and release process.
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
@@ -179,7 +192,7 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T4 (P0): Hidden/background tab behavior.** Done 2026-11-05: wall-clock bounds on the send step (#8); live S5/S6 passed (runs 3–4). Real frozen or discarded tabs were not observed; the bounds remain the safeguard.
 - [x] **T5 (P1): Diagnostics.** Done 2026-11-04. Audit of the activity log against the five stages: confirmed completion + scheduled continuation ("Response complete. Continuation N in Xs."), submission attempt ("Sending continuation N."), confirmed submission ("Continuation N sent.") were logged; **generation observed was never logged**, so a stalled run could not show whether ChatGPT was ever seen working. Added "ChatGPT is generating a response." once per response. A completion detected but not yet confirmed exists only in the content script (the panel shows the live ChatGPT state; the opt-in console diagnostics show it in detail); not added to the log, to avoid a new message type for a transient state. Test: a full cycle logs each stage once, in order. No conversation text in any message.
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
-- [ ] **T7 (P1, M3): Structured stop protocol.** Owner chose M3 (2026-11-05) with strict privacy boundaries (R1–R8). **Design proposed:** `docs/design/m3-stop-protocol.md`. Implementation waits for the owner's approval of the design. Status text is not proof that the work itself is correct.
+- [ ] **T7 (P1, M3): Structured stop protocol.** Design approved 2026-11-06 (R1–R10). Implementing in small PRs: (1) reader and privacy tests; (2) setting, state machine and prechecks; (3) E2E and docs. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
 - [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
@@ -229,7 +242,7 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | D7 | Owner authorizes Claude to merge its own PRs. Auto-merge (squash) may be enabled while required checks are pending; GitHub merges only after they pass. Merge state is verified afterwards. | Owner instruction, 2026-11-04. GitHub enforces the required checks, so waiting adds nothing. | Active |
 | D8 | When the latest finished response changes key during the delay without a new generation, retarget the single pending continuation instead of dropping it. | Dropping it caused a silent stall; retargeting still sends at most one continuation per observed generation, never for an answered key, and re-checks the page before sending. | Active |
 | D9 | Do not add notice texts in other languages unless observed on the live page; make unrecognized notices, missing answers and answer-less generations pause, language-independently. | No reliable source for ChatGPT's Spanish notice texts (2026-11-05); guessed texts would either miss or misfire. The owner chose to fix the gap rather than accept it. | Active |
-| D10 | M3 is next. The extension may read the latest finished answer only when the owner-facing setting is on, only to match three exact marker lines, and never store, send or log the text. | Owner decision 2026-11-05 with requirements R1–R8; the privacy promise changes only for the opt-in setting. | Active (design proposed) |
+| D10 | M3 is next. The extension may read the latest finished answer only when the owner-facing setting is on, only to match three exact marker lines, and never store, send or log the text. | Owner decision 2026-11-05 with requirements R1–R8; the privacy promise changes only for the opt-in setting. | Active (design approved 2026-11-06, R9–R10 added) |
 
 ## 11. Session history
 
@@ -255,14 +268,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-05 | T10 (M2): text-free diagnostic report export from the panel. | [VERIFIED] in tests below; live export by the owner pending (M2 DoD). | `npm run check` PASS (145 tests); `npm run e2e` PASS incl. the report button check. |
 | 2026-11-05 | T11 (M2): halt guidance (Resume when ready / Fix first / Finished, with one action each) in the panel and the report. All M2 code items done; M2 waits only for the owner's live report export. | [VERIFIED] in tests below. | `npm run check` PASS (149 tests); `npm run e2e` PASS incl. the guidance check. |
 | 2026-11-05 | Owner chose M3 (stop protocol) with strict privacy requirements. Technical design written and checked against the architecture and principles: `docs/design/m3-stop-protocol.md` (exact three-line grammar reused from the template, reading rules, outcomes, opt-in setting, privacy enforcement P1–P5 incl. a source-scan test, tests, risks). No implementation. | Design only. | `npm run check` PASS. |
+| 2026-11-06 | Owner: M2 live check done (guidance made sense; diagnostic report had no conversation text), so **M2 complete**. Owner approved the M3 design with R9 (visible answer content only, else `unclear`) and R10 (precise privacy guarantee); both added to the design (isolation rules, `.markdown` marked unverified with live row M3-L0, P6 no retained state). M3 is current. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 
 ## 12. Exact next action
 
-1. **Close M2 (owner, live):** with `main` at or after #21 installed, pause Autopilot once and check the guidance line; click **Copy diagnostic report** and confirm it contains no conversation text. Then a cloud session marks M2 complete.
-2. **Review the M3 design (owner):** `docs/design/m3-stop-protocol.md`. Decisions in it to confirm or change: (a) the three exact marker lines from the template; (b) a missing marker continues as today, while a malformed or ambiguous one pauses; (c) the setting is off by default; (d) quoted text (code, pre, blockquote) is excluded and the marker must be the last line.
-3. **After approval (cloud):** implement M3 in focused PRs: parser + privacy tests first, then the state machine and setting, then E2E and docs.
-
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` — waiting for the M2 live checks and the M3 design review.
+- **Next task (cloud):** T7 part 1: `src/content/statusMarker.ts` (reader only, not wired in) with the unit tests for the grammar, the reading rules, isolation (R9) and privacy (P1, P4, P6).
+- **Then:** part 2 (setting, state machine, prechecks, report and diagnostics), part 3 (E2E, README/CLAUDE.md/template wording, live rows).
+- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol
 
