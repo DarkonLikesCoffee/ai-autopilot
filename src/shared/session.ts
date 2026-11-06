@@ -1,3 +1,4 @@
+import type { StatusMarker } from '../content/statusMarker.ts';
 // Continuation state machine. Pure: (state, event) -> { state, effects }.
 // The background service worker is the only caller. It persists the state
 // before carrying out effects, so a restart never repeats an action.
@@ -31,11 +32,14 @@ export type PrecheckFailure =
   | 'tab_unreachable'
   | 'usage_limit'
   | 'auth_required'
-  | 'unrecognized_notice';
+  | 'unrecognized_notice'
+  | 'marker_complete'
+  | 'marker_blocked'
+  | 'marker_unclear';
 
 export type SubmitOutcome = 'submitted' | 'not_submitted' | 'uncertain';
 
-type Timing = Pick<Settings, 'delaySeconds' | 'maxCycles'>;
+type Timing = Pick<Settings, 'delaySeconds' | 'maxCycles'> & Partial<Pick<Settings, 'stopOnMarker'>>;
 
 export type SessionEvent =
   | { type: 'START'; tabId: number; observation: PageObservation; now: number }
@@ -85,6 +89,8 @@ export function initialSession(): SessionState {
     lastStatus: 'unknown',
     lastContinuationAt: null,
     awaitingResponseSince: null,
+    markerKey: null,
+    markerAcknowledgedKey: null,
     startedAt: null,
     updatedAt: null,
     log: [],
@@ -122,6 +128,9 @@ export const REASON_TEXT: Record<HaltReason, string> = {
   unrecognized_notice: 'ChatGPT shows a notice Autopilot does not recognize (check the page; nothing was sent)',
   no_response: 'ChatGPT did not start answering the continuation',
   no_new_answer: 'ChatGPT finished without a new answer',
+  marker_complete: 'ChatGPT reports the milestone complete (status line in its last answer)',
+  marker_blocked: 'ChatGPT reports it is blocked (status line in its last answer)',
+  marker_unclear: 'Unclear status line in ChatGPT\'s last answer',
 };
 
 function log(state: SessionState, now: number, message: string): SessionState {
@@ -169,6 +178,27 @@ function schedule(state: SessionState, key: string, settings: Timing, now: numbe
     state: log(next, now, `Response complete. Continuation ${state.cycles + 1} in ${settings.delaySeconds}s.`),
     effects: [{ type: 'schedule', dueAt }],
   };
+}
+
+// ---- Status marker (M3) -----------------------------------------------------
+
+/** The precheck failure for a status marker that must not be continued. */
+export function markerFailure(marker: StatusMarker): PrecheckFailure | null {
+  return marker === 'complete' ? 'marker_complete' : marker === 'blocked' ? 'marker_blocked' : marker === 'unclear' ? 'marker_unclear' : null;
+}
+
+/**
+ * Acts on the latest finished answer's status marker, only with the setting on
+ * and unless you resumed this response's marker pause. Only the comparison
+ * result is used; the halt reasons are fixed texts.
+ */
+function haltForMarker(state: SessionState, key: string, marker: StatusMarker, settings: Timing, now: number): TransitionResult | null {
+  if (settings.stopOnMarker !== true || state.markerAcknowledgedKey === key) return null;
+  const withKey = { ...state, markerKey: key };
+  if (marker === 'complete') return halt(withKey, 'stopped', 'marker_complete', now);
+  if (marker === 'blocked') return halt(withKey, 'paused', 'marker_blocked', now);
+  if (marker === 'unclear') return halt(withKey, 'paused', 'marker_unclear', now);
+  return null;
 }
 
 // ---- Observations -----------------------------------------------------------
@@ -240,6 +270,8 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
         return { state: next, effects: [] };
       }
       if (limitReached(state, settings)) return halt(next, 'stopped', 'max_cycles', now, `${settings.maxCycles} sent`);
+      const markerHalt = haltForMarker(next, key, observation.signals.statusMarker, settings, now);
+      if (markerHalt) return markerHalt;
       return schedule(next, key, settings, now);
     }
     case 'idle':
@@ -325,6 +357,12 @@ export function transition(state: SessionState, event: SessionEvent): Transition
           return halt(state, 'error', 'auth_required', now);
         case 'unrecognized_notice':
           return halt(state, 'paused', 'unrecognized_notice', now);
+        case 'marker_complete':
+          return halt({ ...state, phase: 'watching', pendingKey: null, dueAt: null, markerKey: event.key }, 'stopped', 'marker_complete', now);
+        case 'marker_blocked':
+          return halt({ ...state, phase: 'watching', pendingKey: null, dueAt: null, markerKey: event.key }, 'paused', 'marker_blocked', now);
+        case 'marker_unclear':
+          return halt({ ...state, phase: 'watching', pendingKey: null, dueAt: null, markerKey: event.key }, 'paused', 'marker_unclear', now);
       }
       return { state, effects: [] };
     }
@@ -399,6 +437,10 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       }
       if (event.observation.status === 'usage_limit') return reject(state, 'ChatGPT still shows a usage limit.');
       let next: SessionState = { ...state, run: 'running', reason: null, detail: null, tabId };
+      if ((state.reason === 'marker_blocked' || state.reason === 'marker_unclear') && state.markerKey !== null) {
+        // Resume is your explicit override for that one response's marker.
+        next = log({ ...next, markerAcknowledgedKey: state.markerKey, generationSeen: true }, now, 'Resumed despite the status line; that answer is continued once.');
+      }
       const effects: SessionEffect[] = [];
       if (next.phase === 'submitting') {
         // The outcome of that attempt is unknown; its response stays answered, so it is never sent twice.
@@ -501,6 +543,8 @@ export function normalizeSession(raw: unknown): SessionState {
     lastStatus: oneOf(r.lastStatus, STATUSES) ? r.lastStatus : 'unknown',
     lastContinuationAt: numOrNull(r.lastContinuationAt),
     awaitingResponseSince: numOrNull(r.awaitingResponseSince),
+    markerKey: strOrNull(r.markerKey),
+    markerAcknowledgedKey: strOrNull(r.markerAcknowledgedKey),
     startedAt: numOrNull(r.startedAt),
     updatedAt: numOrNull(r.updatedAt),
     log,

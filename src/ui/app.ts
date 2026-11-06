@@ -50,6 +50,8 @@ const MARKUP = `
         <label class="check"><input id="s-unlimited" type="checkbox"> Unlimited</label>
       </div>
       <label class="check"><input id="s-notify" type="checkbox"> Notifications</label>
+      <label class="check"><input id="s-stop-marker" type="checkbox"> Stop on status marker</label>
+      <p class="hint">Off by default. When on, Autopilot reads the latest finished answer, outside code and quotes, only to check whether its last line is exactly <code>AUTOPILOT STATUS: MILESTONE COMPLETE</code> (stop), <code>AUTOPILOT STATUS: BLOCKED</code> (pause) or <code>AUTOPILOT STATUS: CONTINUE</code>. That text is never stored, sent or logged. An unclear status line pauses.</p>
       <p class="hint">Unlimited means no limit set by the extension. ChatGPT's own usage limits always apply: Autopilot stops when one appears.</p>
       <div class="controls">
         <button id="btn-save" class="primary" type="submit">Save settings</button>
@@ -150,6 +152,7 @@ function fillSettings(settings: Settings): void {
   $<HTMLInputElement>('s-max').value = unlimited ? '' : String(settings.maxCycles);
   $<HTMLInputElement>('s-max').disabled = unlimited;
   $<HTMLInputElement>('s-notify').checked = settings.notifications;
+  $<HTMLInputElement>('s-stop-marker').checked = settings.stopOnMarker;
 }
 
 function readSettings(): Settings {
@@ -161,6 +164,7 @@ function readSettings(): Settings {
     confirmSeconds: Number($<HTMLInputElement>('s-confirm').value),
     maxCycles: unlimited ? 0 : Number($<HTMLInputElement>('s-max').value),
     notifications: $<HTMLInputElement>('s-notify').checked,
+    stopOnMarker: $<HTMLInputElement>('s-stop-marker').checked,
   };
 }
 

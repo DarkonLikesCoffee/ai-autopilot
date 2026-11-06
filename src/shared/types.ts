@@ -1,3 +1,4 @@
+import type { StatusMarker } from '../content/statusMarker.ts';
 // Shared data shapes. Everything here is plain JSON so it can be persisted in
 // chrome.storage and passed through extension messaging unchanged.
 
@@ -11,6 +12,11 @@ export interface Settings {
   confirmSeconds: number;
   /** Maximum continuations per session; 0 means no extension-imposed limit. */
   maxCycles: number;
+  /**
+   * M3: stop or pause on an exact status marker at the end of the latest
+   * finished answer. Off by default; when off the answer is never read.
+   */
+  stopOnMarker: boolean;
   notifications: boolean;
 }
 
@@ -49,6 +55,14 @@ export interface PageSignals {
    * treated as a finished answer: Autopilot pauses instead of continuing.
    */
   unrecognizedNoticeFound: boolean;
+  /**
+   * M3: the result of comparing the latest finished answer's last line with the
+   * three status lines. Never the text itself. "none" whenever the setting is
+   * off or the page is not showing a finished answer (then nothing is read).
+   */
+  statusMarker: StatusMarker;
+  /** M3: how many visible answer-content elements the latest answer has (structure only). */
+  answerContentElements: number;
 }
 
 /**
@@ -81,7 +95,10 @@ export type HaltReason =
   | 'tab_unreachable'
   | 'unrecognized_notice'
   | 'no_response'
-  | 'no_new_answer';
+  | 'no_new_answer'
+  | 'marker_complete'
+  | 'marker_blocked'
+  | 'marker_unclear';
 
 export interface SessionState {
   schemaVersion: 2;
@@ -111,6 +128,10 @@ export interface SessionState {
   lastContinuationAt: number | null;
   /** Set when a continuation was confirmed sent before ChatGPT was seen generating; cleared once it generates. */
   awaitingResponseSince: number | null;
+  /** M3: the response whose status marker paused the run (a key, never text). */
+  markerKey: string | null;
+  /** M3: a marker pause you resumed: the marker of this response is no longer acted on. */
+  markerAcknowledgedKey: string | null;
   startedAt: number | null;
   updatedAt: number | null;
   log: LogEntry[];

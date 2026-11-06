@@ -30,6 +30,9 @@ export const HALT_GUIDANCE: Record<HaltReason, HaltGuidance> = {
   unrecognized_notice: { kind: 'fix', action: 'Read the notice on the ChatGPT page and deal with it, then press Resume. If it is not in English, please report its exact text.' },
   no_response: { kind: 'fix', action: 'Check the ChatGPT page for a notice or error; press Resume once ChatGPT answers again.' },
   no_new_answer: { kind: 'fix', action: 'Check the last answer on the page (it may have ended in an error); press Resume to wait for the next finished answer.' },
+  marker_complete: { kind: 'finished', action: 'Check the result yourself: the status line is ChatGPT\'s own report, not a verification. Start again if more work is wanted.' },
+  marker_blocked: { kind: 'fix', action: 'Read ChatGPT\'s last answer and give it what it needs. Then press Resume (that answer is then continued once) or send it a message yourself.' },
+  marker_unclear: { kind: 'fix', action: 'Check the last line of ChatGPT\'s last answer: it must be exactly one of the three status lines. Then press Resume (that answer is then continued once).' },
 };
 
 export const HALT_KIND_LABEL: Record<HaltKind, string> = {

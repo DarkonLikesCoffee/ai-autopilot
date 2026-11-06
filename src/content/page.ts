@@ -3,6 +3,7 @@
 
 import { AUTH_PATTERNS, ERROR_PATTERNS, USAGE_LIMIT_PATTERNS, type SelectorConfig } from './selectors.ts';
 import type { PageObservation, PageSignals, ResponseStatus } from '../shared/types.ts';
+import { readStatusMarker, type MarkerNode } from './statusMarker.ts';
 
 export interface ElementLike {
   textContent: string | null;
@@ -147,7 +148,7 @@ export function hasText(element: ElementLike | undefined): boolean {
   return text.replace(/\u00a0/g, ' ').trim().length > 0;
 }
 
-export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null } {
+export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null; lastMessage: ElementLike | undefined } {
   const assistants = findMessages(root, selectors.assistantMessage);
   const last = assistants[assistants.length - 1];
   const composers = findVisible(root, selectors.composer);
@@ -164,8 +165,11 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       usageLimitNoticeFound: noticeMatches(root, selectors, USAGE_LIMIT_PATTERNS),
       authRequired: noticeMatches(root, selectors, AUTH_PATTERNS) || (composers.length === 0 && findVisible(root, selectors.loginControl).length > 0),
       unrecognizedNoticeFound: unrecognizedNotice(root, selectors),
+      statusMarker: 'none',
+      answerContentElements: 0,
     },
     lastMessageId: messageId(last, selectors.messageIdAttribute),
+    lastMessage: last,
   };
 }
 
@@ -196,7 +200,19 @@ export function responseKey(url: string, signals: PageSignals, lastMessageId: st
   return `${conversationPath(url)}|${marker}`;
 }
 
-export function observePage(root: QueryRoot, url: string, selectors: SelectorConfig): PageObservation {
-  const { signals, lastMessageId } = readSignals(root, selectors);
-  return { status: classify(signals), responseKey: responseKey(url, signals, lastMessageId), url, signals };
+export interface ObserveOptions {
+  /** M3: read the latest finished answer's status marker. Only when the setting is on. */
+  readMarker?: boolean;
+}
+
+export function observePage(root: QueryRoot, url: string, selectors: SelectorConfig, options: ObserveOptions = {}): PageObservation {
+  const { signals, lastMessageId, lastMessage } = readSignals(root, selectors);
+  const status = classify(signals);
+  // The answer is read only when the setting is on and it is a finished answer (R1, design rules 1-3).
+  if (options.readMarker === true && status === 'complete' && lastMessage) {
+    const reading = readStatusMarker(lastMessage as unknown as MarkerNode, selectors.answerContent);
+    signals.statusMarker = reading.marker;
+    signals.answerContentElements = reading.contentElements;
+  }
+  return { status, responseKey: responseKey(url, signals, lastMessageId), url, signals };
 }

@@ -22,7 +22,7 @@ export const LIMITS = {
 } as const;
 
 export function defaultSettings(): Settings {
-  return { schemaVersion: 2, prompt: DEFAULT_PROMPT, delaySeconds: 10, confirmSeconds: 3, maxCycles: 25, notifications: true };
+  return { schemaVersion: 2, prompt: DEFAULT_PROMPT, delaySeconds: 10, confirmSeconds: 3, maxCycles: 25, notifications: true, stopOnMarker: false };
 }
 
 export type SettingsField = Exclude<keyof Settings, 'schemaVersion'>;
@@ -66,6 +66,8 @@ export function normalizeSettings(raw: unknown): Settings {
     confirmSeconds: num(r.confirmSeconds, defaults.confirmSeconds),
     maxCycles: num(r.maxCycles, defaults.maxCycles),
     notifications: typeof r.notifications === 'boolean' ? r.notifications : defaults.notifications,
+    // Off unless explicitly turned on: older stored settings have no value.
+    stopOnMarker: r.stopOnMarker === true,
   };
   for (const issue of validateSettings(candidate)) {
     (candidate as unknown as Record<string, unknown>)[issue.field] = defaults[issue.field];

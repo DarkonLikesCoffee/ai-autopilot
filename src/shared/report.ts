@@ -67,6 +67,7 @@ export function buildDiagnosticReport(input: ReportInput): Record<string, unknow
       confirmSeconds: settings.confirmSeconds,
       maxCycles: settings.maxCycles,
       notifications: settings.notifications,
+      stopOnMarker: settings.stopOnMarker,
     },
     session: {
       run: session.run,
@@ -78,6 +79,7 @@ export function buildDiagnosticReport(input: ReportInput): Record<string, unknow
       conversation: conversationKind(session.conversation),
       generationSeen: session.generationSeen,
       pendingKey: keyKind(session.pendingKey),
+      markerPauseResumed: session.markerAcknowledgedKey !== null,
       answeredResponses: session.answeredKeys.length,
       lastStatus: session.lastStatus,
       secondsFromNow: {

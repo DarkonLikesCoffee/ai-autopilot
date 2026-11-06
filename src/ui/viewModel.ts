@@ -7,7 +7,7 @@ import type { SessionState } from '../shared/types.ts';
 
 /** Guidance is shown when paused or in error, and when stopped by the limit; not after your own Stop. */
 export function guidanceFor(session: SessionState): PanelView['guidance'] {
-  const showable = session.run === 'paused' || session.run === 'error' || (session.run === 'stopped' && session.reason === 'max_cycles');
+  const showable = session.run === 'paused' || session.run === 'error' || (session.run === 'stopped' && (session.reason === 'max_cycles' || session.reason === 'marker_complete'));
   const g = showable ? haltGuidance(session.reason) : null;
   return g ? { label: HALT_KIND_LABEL[g.kind], kind: g.kind, action: g.action } : null;
 }
