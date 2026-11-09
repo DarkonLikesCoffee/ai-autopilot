@@ -90,3 +90,10 @@ test('the console probe in docs/ uses the same send and composer selectors as th
   assert.deepEqual(list('SEND'), DEFAULT_SELECTORS.sendControl);
   assert.deepEqual(list('COMPOSER'), DEFAULT_SELECTORS.composer);
 });
+
+test('the answer-structure probe in docs/ finds the latest answer with the same selectors as the extension', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const probe = await readFile(new URL('../docs/answer-structure-probe.js', import.meta.url), 'utf8');
+  const list = new Function(`return ${probe.match(/^\s*const ASSISTANT = (\[.*\]);\s*$/m)![1]}`)() as string[];
+  assert.deepEqual(list, DEFAULT_SELECTORS.assistantMessage);
+});

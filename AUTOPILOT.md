@@ -169,7 +169,7 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 - [x] **Behaviour**: [VERIFIED] T7 part 2. The setting is off by default (older stored settings stay off). COMPLETE stops (*Finished*); BLOCKED and unclear pause (*Fix first*); missing or CONTINUE continue. The marker is checked again in the background precheck and in the page's own precheck. **Resume after a marker pause is your override for that one response** (it is continued once; later answers are checked again).
 - [x] **Docs**: [VERIFIED] T7 part 3. README privacy wording (R10) and a "Stop on status marker" section; the exception added to principle 10 (section 3), section 2 and `CLAUDE.md`; the template now states the exact last-line rule; live rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`.
 - [x] **Checks**: [VERIFIED] `npm run check` (176 tests); `npm run e2e` incl. three M3 scenarios (code-block marker ignored, then COMPLETE stops with *Finished*; BLOCKED pauses and Resume overrides once; setting off ignores the line).
-- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. M3-L0 confirms the unverified `.markdown` answer-content selector.
+- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. **M3-L0 FAILED 2026-11-09:** the live page has no `.markdown` element (`answerContentElements: 0`, `document.querySelectorAll('.markdown').length === 0`), so with the setting on every answer pauses as "unclear" (the intended safe failure). The fix needs the live answer structure: `docs/answer-structure-probe.js` (text-free) captures it.
 
 ## 6. Prioritized roadmap
 
@@ -214,6 +214,8 @@ A task may be reordered only with repository evidence and a note in the decision
 Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 
 ## 9. Known limitations and risks
+
+- [UNRESOLVED] **M3 answer-content selector (live M3-L0 FAIL, 2026-11-09):** `.markdown` does not exist on the current ChatGPT page. "Stop on status marker" pauses every finished answer as "unclear" until the selector is replaced **from a captured structure** (no guessing, D9). The setting is off by default; the README tells users to keep it off for now. ChatGPT is not reachable from cloud sessions (network policy), so the structure must come from the owner's tab.
 
 - [VERIFIED] **Live-site bug (owner report, 2026-11-04) — root cause found and fixed.** On the es-ES ChatGPT UI the only send control is `<button aria-label="Enviar" type="submit">`; all four send selectors matched nothing, so every continuation stopped with "the send button did not become available". The owner's live diagnostics showed insertion working (`holdsPrompt: true`, `proseMirror: true`, `execCommandReturned: true`): a selector issue, not an insertion or timing issue. Fix: localized labels live in one table (`LOCALIZED_LABELS` in `selectors.ts`, each with its observation source; `Enviar`/`Detener` for es), and a send-button match inside the message box's own form is preferred over one elsewhere (`sendButton.ts`). Insertion mechanism and timeouts unchanged. [UNRESOLVED] other UI languages: work only where ChatGPT exposes `data-testid`/`id`; labels are added only from live observations.
 
@@ -272,12 +274,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-06 | T7 part 1 (M3): status-marker reader with R9 isolation and R10 privacy; `answerContent: ['.markdown']` added to `selectors.ts`, marked unverified (live row M3-L0); source-scan privacy test for all page-text reads. Not wired in: no behaviour change. | [VERIFIED] in tests below. | `npm run check` PASS (161 tests); `npm run e2e` PASS. |
 | 2026-11-06 | T7 part 2 (M3): reader wired in. `stopOnMarker` setting and panel checkbox (off by default, with the privacy note); `signals.statusMarker` and `answerContentElements` (enum and count, validated); read only with the setting on and a finished answer; detector reports changes; state machine and both prechecks act on it; three halt reasons with guidance; report shows the setting and the enum. Resume after BLOCKED or unclear overrides that one response (an addition to the design, for user control; recorded here). | [VERIFIED] in tests below. | `npm run check` PASS (176 tests); `npm run e2e` PASS. |
 | 2026-11-06 | T7 part 3 (M3): E2E scenarios (fake page with real `.markdown` answer content) and docs: R10 privacy wording in README, `CLAUDE.md`, sections 2–3; README section on the feature; template states the exact last-line rule; live rows M3-L0 to M3-L6. All M3 code and doc items done; M3 waits for live validation. | [VERIFIED] in tests below. | `npm run check` PASS (176 tests); `npm run e2e` PASS incl. 3 M3 scenarios. |
+| 2026-11-09 | Live M3-L0 FAIL (owner): no `.markdown` on the live page. Not guessed. Added `docs/answer-structure-probe.js` (text-free structure of the latest answer: tags, classes, roles, data-* names, visibility, boxes, text lengths), with a sync unit test and an E2E check that it shows the structure but no text. README and live docs updated: keep the setting off until fixed. | [VERIFIED] probe in tests; live structure pending. | `npm run check` PASS (177 tests); `npm run e2e` PASS. |
 
 ## 12. Exact next action
 
-- **Owner (live):** rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md` (Stop on status marker on, diagnostics on). M3-L0 first: if `answerContentElements` is not 1, send the `Page detection` entry; the answer-content selector is then fixed from that structure, with a test.
-- **Cloud, when results arrive:** record them, fix anything that fails, reassess M3 against its definition of done.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for M3 live validation.
+- **Owner:** run `docs/answer-structure-probe.js` in the ChatGPT tab after a finished answer and send the JSON (ideally twice: a plain answer, and one with a tool, sources or thinking section).
+- **Cloud, then:** choose the `answerContent` selector from that structure. Prefer a stable attribute; exactly one visible match per answer, with R9 intact. Add a regression test that replays the captured structure, update the E2E fake page to it, and ask the owner to repeat M3-L0.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for the live answer structure.
 
 ## 13. Update protocol
 
