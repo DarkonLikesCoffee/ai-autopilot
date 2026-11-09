@@ -251,6 +251,31 @@ conversation, ask ChatGPT to end its answers as described in each row.
 | M3-L5 | Answer that shows the marker only inside a code block | Continues (quoted text is ignored) |
 | M3-L6 | After L3/L4, click **Copy diagnostic report** | It shows `statusMarker` and `stopOnMarker` only; no answer text |
 
+### M3-L0 — reported 2026-11-09 — FAIL
+
+- Owner, current ChatGPT page, setting on, diagnostics on: `status: 'complete'`,
+  `answerContentElements: 0`, `assistantMessageCount: 7`, `userMessageCount: 7`.
+- `document.querySelectorAll('.markdown').length` in the console: `0`.
+- Meaning: the unverified answer-content selector `.markdown` does not exist on
+  the live page. With the setting on, every finished answer therefore pauses as
+  "unclear" (the intended safe failure); nothing is read and nothing is guessed.
+- Next: capture the answer structure with `docs/answer-structure-probe.js` (below).
+
+### Capturing the answer structure (for M3-L0)
+
+1. In the ChatGPT tab, wait until the latest answer is finished.
+2. Open DevTools → Console, paste the whole of
+   [`docs/answer-structure-probe.js`](answer-structure-probe.js) and press Enter.
+3. Copy the JSON it returns and send it. It contains tag names, class names,
+   roles, `data-*` attribute names, visibility, box sizes and **text lengths**
+   (numbers), never any text; values that do not look like identifiers are
+   shown as `<omitted>`.
+4. Optional but helpful: send it once for a short plain answer and once for an
+   answer that used a tool or shows a "thinking"/sources section.
+
+The answer-content selector is then chosen from that structure, with a
+regression test built from it, and M3-L0 is repeated.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

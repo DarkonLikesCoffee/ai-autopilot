@@ -12,7 +12,7 @@
 // submission, verification, safeguards, messaging and storage.
 
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -296,6 +296,16 @@ try {
   check('M3: a marker in a code block is ignored; MILESTONE COMPLETE on the last line stops with "Finished", nothing more sent',
     (await session()).run === 'stopped' && (await messages(markerChat)).length === 2 && /^Finished:/.test(guidanceAfterComplete),
     JSON.stringify({ messages: (await messages(markerChat)).length, guidance: guidanceAfterComplete.slice(0, 30) }));
+
+  // The M3-L0 answer-structure probe: finds the answer content, prints structure only, never text.
+  const probeSource = readFileSync(new URL('../docs/answer-structure-probe.js', import.meta.url), 'utf8');
+  const probeOut = await markerChat.evaluate((src) => (0, eval)(src), probeSource);
+  let probe = null;
+  try { probe = JSON.parse(probeOut); } catch { /* checked below */ }
+  check('M3-L0 probe: shows the answer structure (the .markdown element) and no text at all',
+    !!probe && probe.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0) &&
+      !probeOut.includes('Example of the protocol') && !probeOut.includes('AUTOPILOT STATUS') && !probeOut.includes('Marker test') && !probeOut.includes(PROMPT),
+    probe ? `nodes=${probe.nodesShown} selector=${probe.selectorUsed}` : String(probeOut).slice(0, 80));
 
   // 3. BLOCKED pauses; Resume is the override for that one answer.
   const blockedChat = await openConversation('/c/e2e-blocked');
