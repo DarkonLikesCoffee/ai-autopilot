@@ -303,9 +303,32 @@ try {
   let probe = null;
   try { probe = JSON.parse(probeOut); } catch { /* checked below */ }
   check('M3-L0 probe: shows the answer structure (the .markdown element) and no text at all',
-    !!probe && probe.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0) &&
+    !!probe && probe.version === 2 && probe.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0) &&
       !probeOut.includes('Example of the protocol') && !probeOut.includes('AUTOPILOT STATUS') && !probeOut.includes('Marker test') && !probeOut.includes(PROMPT),
     probe ? `nodes=${probe.nodesShown} selector=${probe.selectorUsed}` : String(probeOut).slice(0, 80));
+
+  // Probe v2 on a layout where the assistant selector matches a visually hidden heading next to the
+  // message (a test fixture for the probe's walk up to the turn, not a claim about ChatGPT's markup).
+  const layout = await context.newPage();
+  await layout.route('https://chatgpt.com/c/e2e-probe-layout', (route) => route.fulfill({ status: 200, contentType: 'text/html', body:
+    '<!doctype html><html><body><main>' +
+    '<article data-testid="conversation-turn-1"><div data-message-author-role="user" data-message-id="u1">USER-SECRET question</div></article>' +
+    '<article data-testid="conversation-turn-2">' +
+      '<h4 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)" data-conversation-role="assistant"><span>LABEL-SECRET</span></h4>' +
+      '<div data-message-author-role="assistant" data-message-id="m1"><div class="markdown"><p>ANSWER-SECRET text</p><p>AUTOPILOT STATUS: CONTINUE</p></div></div>' +
+    '</article></main></body></html>' }));
+  await layout.goto('https://chatgpt.com/c/e2e-probe-layout');
+  const layoutOut = await layout.evaluate((src) => (0, eval)(src), probeSource);
+  let lp = null;
+  try { lp = JSON.parse(layoutOut); } catch { /* checked below */ }
+  const headingNode = lp?.nodes.find((n) => n.isExtensionMatch);
+  check('M3-L0 probe v2: walks up from a hidden heading to its turn and shows the answer content there, without any text',
+    !!lp && lp.turnIsAncestorUp === 1 && headingNode?.tag === 'h4' && headingNode.box[0] <= 1 &&
+      lp.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0 && n.visible) &&
+      lp.candidates.find((c) => c.selector === '[data-message-id]')?.count === 2 &&
+      !/SECRET|AUTOPILOT STATUS/.test(layoutOut),
+    lp ? `up=${lp.turnIsAncestorUp} nodes=${lp.nodesShown}` : String(layoutOut).slice(0, 80));
+  await layout.close();
 
   // 3. BLOCKED pauses; Resume is the override for that one answer.
   const blockedChat = await openConversation('/c/e2e-blocked');

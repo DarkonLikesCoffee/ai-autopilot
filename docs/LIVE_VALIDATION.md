@@ -261,11 +261,30 @@ conversation, ask ChatGPT to end its answers as described in each row.
   "unclear" (the intended safe failure); nothing is read and nothing is guessed.
 - Next: capture the answer structure with `docs/answer-structure-probe.js` (below).
 
+### Answer-structure probe v1 — reported 2026-11-09
+
+- `selectorUsed: [data-conversation-role="assistant"]`, 5 assistant matches.
+- The latest match is an **`h4` with class `sr-only`**, box 1×1, no
+  `data-message-id`, text length 13, containing a visible 13-character `span`
+  and a hidden 7-character `span`. It is a visually hidden heading labelling the
+  turn for screen readers. The 13-character length matches a label such as
+  "ChatGPT said:"; that wording is inferred, since no text was captured.
+- Meaning:
+  - The extension's assistant selector matches a **turn heading**, not the
+    message. The M3 reader therefore looks for answer content inside that
+    heading, where there is none (`answerContentElements: 0`).
+  - The heading has no message id, so the extension's live response keys are
+    almost certainly count-based (`n:<count>`), not id-based. This still meets
+    M1's rules (the safe direction), but it is now evidence rather than an open
+    question (D1).
+- v1 did not show where the answer sits relative to the heading. v2 (below)
+  walks up to the turn.
+
 ### Capturing the answer structure (for M3-L0)
 
 1. In the ChatGPT tab, wait until the latest answer is finished.
 2. Open DevTools → Console, paste the whole of
-   [`docs/answer-structure-probe.js`](answer-structure-probe.js) and press Enter.
+   [`docs/answer-structure-probe.js`](answer-structure-probe.js) (version 2) and press Enter.
 3. Copy the JSON it returns and send it. It contains tag names, class names,
    roles, `data-*` attribute names, visibility, box sizes and **text lengths**
    (numbers), never any text; values that do not look like identifiers are
