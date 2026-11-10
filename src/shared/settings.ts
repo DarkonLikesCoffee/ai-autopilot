@@ -16,7 +16,7 @@ Continue making meaningful progress. Only stop if the project milestone is compl
 
 export const LIMITS = {
   promptMaxLength: 8000,
-  delaySeconds: { min: 0, max: 3600 },
+  delaySeconds: { min: 1, max: 3600 },
   confirmSeconds: { min: 1, max: 120 },
   maxCycles: { min: 0, max: 100000 },
 } as const;

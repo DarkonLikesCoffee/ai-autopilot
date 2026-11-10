@@ -401,11 +401,11 @@ test('18: the maximum number of cycles is respected', async () => {
 });
 
 test('19: unlimited mode imposes no cycle cap', async () => {
-  const h = harness(undefined, { maxCycles: 0, delaySeconds: 0 });
+  const h = harness(undefined, { maxCycles: 0, delaySeconds: 1, confirmSeconds: 1 });
   ok(await h.ui('START'));
   for (let i = 1; i <= 150; i++) {
     await h.respond(`m${i}`);
-    await h.advance(0);
+    await h.advance(1000);
   }
   assert.equal(h.submits.length, 150);
   assert.equal((await h.session()).run, 'running');
@@ -599,12 +599,12 @@ test('a regenerated response with a new id gets one continuation; one with the s
   assert.equal(h.submits.length, 3);
 });
 
-test('with no delay, a continuation retargeted from an unconfirmed read still waits the confirmation delay', async () => {
-  const h = harness(undefined, { delaySeconds: 0, confirmSeconds: 2 });
+test('with the minimum delay, a continuation retargeted from an unconfirmed read still waits the longer confirmation delay', async () => {
+  const h = harness(undefined, { delaySeconds: 1, confirmSeconds: 2 });
   ok(await h.ui('START'));
   await h.respond('tmp');
   h.page.observation = obs('complete', key('final'));
-  await h.advance(0);
+  await h.advance(2000); // the attempt is due; its precheck finds a different answer
   assert.equal(h.submits.length, 0);
   const s = await h.session();
   assert.equal(s.pendingKey, key('final'));
@@ -614,7 +614,7 @@ test('with no delay, a continuation retargeted from an unconfirmed read still wa
   await h.advance(5000);
   assert.equal(h.submits.length, 0);
   await h.see(obs('complete', key('final')));
-  await h.advance(0);
+  await h.advance(2000);
   assert.equal(h.submits.length, 1);
 });
 

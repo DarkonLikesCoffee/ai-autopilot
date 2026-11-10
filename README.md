@@ -69,8 +69,13 @@ Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
 - **Session:** current conversation, continuations sent (of the maximum, or ∞),
   ChatGPT's current state, time until the next continuation, the last
   continuation's time and the last error.
-- **Settings:** continuation prompt, delay before sending, completion
-  confirmation delay, maximum cycles (or **Unlimited**) and notifications.
+- **Settings:** continuation prompt, delay before sending (1–3600 s), completion
+  confirmation delay (1–120 s), maximum cycles (or **Unlimited**), notifications
+  and *Stop on status marker*. An invalid value is marked next to its field and
+  nothing is saved; *Unsaved changes* shows until you save; *Reset to defaults*
+  asks first, because it also replaces your continuation prompt. Saved changes
+  apply right away: a new prompt from the next continuation, a new delay from
+  the next countdown (a running countdown is not changed).
 - **Activity:** a short log of what Autopilot did and why, and **Copy diagnostic report**: technical state only (settings without the prompt, session state, log, page signals, last send attempt). It contains no prompt, conversation, message or notice text, nor conversation ids or titles. Paste it into an issue when asking for help.
 
 **Unlimited** means no limit set by the extension. ChatGPT's own usage limits

@@ -2,9 +2,10 @@
 // Fixed markup is built once; every dynamic value is set with textContent.
 
 import type { UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
-import { LIMITS } from '../shared/settings.ts';
+import { LIMITS, type SettingsField } from '../shared/settings.ts';
 import type { Settings } from '../shared/types.ts';
 import { buildView, formatClock } from './viewModel.ts';
+import { FIELD_INPUT, fieldIssues, hasUnsavedChanges, parseForm, type FormValues } from './settingsForm.ts';
 
 const MARKUP = `
 <header class="bar">
@@ -43,19 +44,29 @@ const MARKUP = `
     <form id="settings-form" novalidate>
       <label for="s-prompt">Continuation prompt <span class="hint">sent unchanged after every finished answer</span></label>
       <textarea id="s-prompt" rows="9" maxlength="${LIMITS.promptMaxLength}" spellcheck="true"></textarea>
+      <p id="s-prompt-error" class="field-error" hidden></p>
       <div class="grid">
-        <label>Delay before sending (s)<input id="s-delay" type="number" min="${LIMITS.delaySeconds.min}" max="${LIMITS.delaySeconds.max}" step="1"></label>
-        <label>Completion confirmation (s)<input id="s-confirm" type="number" min="${LIMITS.confirmSeconds.min}" max="${LIMITS.confirmSeconds.max}" step="1"></label>
-        <label>Maximum cycles<input id="s-max" type="number" min="1" max="${LIMITS.maxCycles.max}" step="1"></label>
+        <div><label>Delay before sending (s)<input id="s-delay" type="number" min="${LIMITS.delaySeconds.min}" max="${LIMITS.delaySeconds.max}" step="1"></label><p id="s-delay-error" class="field-error" hidden></p></div>
+        <div><label>Completion confirmation (s)<input id="s-confirm" type="number" min="${LIMITS.confirmSeconds.min}" max="${LIMITS.confirmSeconds.max}" step="1"></label><p id="s-confirm-error" class="field-error" hidden></p></div>
+        <div><label>Maximum cycles<input id="s-max" type="number" min="1" max="${LIMITS.maxCycles.max}" step="1"></label><p id="s-max-error" class="field-error" hidden></p></div>
         <label class="check"><input id="s-unlimited" type="checkbox"> Unlimited</label>
       </div>
       <label class="check"><input id="s-notify" type="checkbox"> Notifications</label>
       <label class="check"><input id="s-stop-marker" type="checkbox"> Stop on status marker</label>
       <p class="hint">Off by default. When on, Autopilot reads the latest finished answer, outside code and quotes, only to check whether its last line is exactly <code>AUTOPILOT STATUS: MILESTONE COMPLETE</code> (stop), <code>AUTOPILOT STATUS: BLOCKED</code> (pause) or <code>AUTOPILOT STATUS: CONTINUE</code>. That text is never stored, sent or logged. An unclear status line pauses.</p>
       <p class="hint">Unlimited means no limit set by the extension. ChatGPT's own usage limits always apply: Autopilot stops when one appears.</p>
+      <p class="hint" id="settings-timing">Saved changes apply right away: a new continuation prompt is used for the next continuation, a new delay from the next countdown. A countdown that is already running is not changed.</p>
       <div class="controls">
         <button id="btn-save" class="primary" type="submit">Save settings</button>
         <button id="btn-reset" type="button">Reset to defaults</button>
+        <span id="settings-unsaved" class="unsaved" hidden>Unsaved changes.</span>
+      </div>
+      <div id="reset-confirm" class="confirm" role="group" aria-labelledby="reset-confirm-text" hidden>
+        <p id="reset-confirm-text"><strong>Reset all settings and the continuation prompt to the defaults?</strong> Your continuation prompt is replaced by the default one.</p>
+        <div class="controls">
+          <button id="btn-reset-confirm" class="danger" type="button">Reset settings and prompt</button>
+          <button id="btn-reset-cancel" type="button">Cancel</button>
+        </div>
       </div>
     </form>
   </details>
@@ -81,6 +92,8 @@ let snapshot: UiSnapshot | null = null;
 /** Local time when the snapshot arrived, to advance the countdown between refreshes. */
 let receivedAt = 0;
 let settingsDirty = false;
+/** Set after a refused save: from then on, field messages follow the input. */
+let showFieldIssues = false;
 
 async function request(message: UiRequest): Promise<UiResponse> {
   try {
@@ -155,17 +168,50 @@ function fillSettings(settings: Settings): void {
   $<HTMLInputElement>('s-stop-marker').checked = settings.stopOnMarker;
 }
 
-function readSettings(): Settings {
-  const unlimited = $<HTMLInputElement>('s-unlimited').checked;
+function readForm(): FormValues {
   return {
-    schemaVersion: 2,
     prompt: $<HTMLTextAreaElement>('s-prompt').value,
-    delaySeconds: Number($<HTMLInputElement>('s-delay').value),
-    confirmSeconds: Number($<HTMLInputElement>('s-confirm').value),
-    maxCycles: unlimited ? 0 : Number($<HTMLInputElement>('s-max').value),
+    delaySeconds: $<HTMLInputElement>('s-delay').value,
+    confirmSeconds: $<HTMLInputElement>('s-confirm').value,
+    maxCycles: $<HTMLInputElement>('s-max').value,
+    unlimited: $<HTMLInputElement>('s-unlimited').checked,
     notifications: $<HTMLInputElement>('s-notify').checked,
     stopOnMarker: $<HTMLInputElement>('s-stop-marker').checked,
   };
+}
+
+/** Marks each invalid field and describes it in place; returns the first invalid control. */
+function markFieldIssues(issues: Partial<Record<SettingsField, string>>): HTMLElement | null {
+  let first: HTMLElement | null = null;
+  for (const [field, id] of Object.entries(FIELD_INPUT) as [SettingsField, string][]) {
+    const control = document.getElementById(id);
+    const message = document.getElementById(`${id}-error`);
+    if (!control || !message) continue;
+    const text = issues[field] ?? '';
+    message.textContent = text;
+    message.hidden = !text;
+    if (text) {
+      control.setAttribute('aria-invalid', 'true');
+      control.setAttribute('aria-describedby', message.id);
+      first ??= control;
+    } else {
+      control.removeAttribute('aria-invalid');
+      control.removeAttribute('aria-describedby');
+    }
+  }
+  return first;
+}
+
+function renderSettingsState(): void {
+  const unsaved = snapshot !== null && settingsDirty && hasUnsavedChanges(readForm(), snapshot.settings);
+  $('settings-unsaved').hidden = !unsaved;
+  if (showFieldIssues) markFieldIssues(fieldIssues(readForm()));
+}
+
+function setResetConfirm(open: boolean): void {
+  $('reset-confirm').hidden = !open;
+  $<HTMLButtonElement>('btn-reset').disabled = open;
+  $(open ? 'btn-reset-cancel' : 'btn-reset').focus();
 }
 
 function render(): void {
@@ -202,6 +248,7 @@ function render(): void {
   $('f-countdown').textContent = view.countdown;
   $('f-last').textContent = view.lastContinuation;
   $('f-error').textContent = view.lastError;
+  renderSettingsState();
 
   const log = $('log');
   const entries = [...snapshot.session.log].reverse().slice(0, 15);
@@ -240,7 +287,8 @@ function init(): void {
   $('btn-report').addEventListener('click', (e) => void copyReport(e.currentTarget as HTMLButtonElement));
 
   const form = $<HTMLFormElement>('settings-form');
-  form.addEventListener('input', () => { settingsDirty = true; });
+  form.addEventListener('input', () => { settingsDirty = true; renderSettingsState(); });
+  form.addEventListener('change', () => { settingsDirty = true; renderSettingsState(); });
   $<HTMLInputElement>('s-unlimited').addEventListener('change', (e) => {
     const unlimited = (e.currentTarget as HTMLInputElement).checked;
     const max = $<HTMLInputElement>('s-max');
@@ -249,17 +297,42 @@ function init(): void {
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    void act({ type: 'SAVE_SETTINGS', settings: readSettings() }, $<HTMLButtonElement>('btn-save')).then((response) => {
+    const values = readForm();
+    const issues = fieldIssues(values);
+    const firstInvalid = markFieldIssues(issues);
+    if (firstInvalid) {
+      // Nothing is sent: each field says what is wrong, and focus goes to the first one.
+      showFieldIssues = true;
+      showBanner('Fix the marked settings first. Nothing was saved.', 'danger');
+      firstInvalid.focus();
+      return;
+    }
+    void act({ type: 'SAVE_SETTINGS', settings: parseForm(values) }, $<HTMLButtonElement>('btn-save')).then((response) => {
       if (response.ok) {
         settingsDirty = false;
+        showFieldIssues = false;
+        markFieldIssues({});
         fillSettings(response.snapshot.settings);
+        renderSettingsState();
       }
     });
   });
-  $('btn-reset').addEventListener('click', (e) => {
-    settingsDirty = false;
+  // Reset asks first: it also replaces the continuation prompt.
+  $('btn-reset').addEventListener('click', () => setResetConfirm(true));
+  $('btn-reset-cancel').addEventListener('click', () => setResetConfirm(false));
+  $('reset-confirm').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); setResetConfirm(false); }
+  });
+  $('btn-reset-confirm').addEventListener('click', (e) => {
     void act({ type: 'RESET_SETTINGS' }, e.currentTarget as HTMLButtonElement).then((response) => {
-      if (response.ok) fillSettings(response.snapshot.settings);
+      if (response.ok) {
+        settingsDirty = false;
+        showFieldIssues = false;
+        markFieldIssues({});
+        fillSettings(response.snapshot.settings);
+      }
+      setResetConfirm(false);
+      renderSettingsState();
     });
   });
 

@@ -164,6 +164,9 @@ Details added by the session (`session.ts`):
 |---|---|---|
 | Settings saved | Settings saved. | (unchanged) |
 | Settings reset | Settings reset to the defaults. | Settings reset to the defaults, including the continuation prompt. |
+| Settings refused in the panel (C-6) | — | Fix the marked settings first. Nothing was saved. (each field then shows its own message, as in `validateSettings`) |
+| Unsaved form (C-6) | — | Unsaved changes. |
+| When changes apply (C-6) | — | Saved changes apply right away: a new continuation prompt is used for the next continuation, a new delay from the next countdown. A countdown that is already running is not changed. |
 | Reset confirmation (new, implemented in C-6; owner edit 5) | — (no confirmation) | **Reset all settings and the continuation prompt to the defaults?** Your continuation prompt is replaced by the default one. Buttons: *Reset settings and prompt* / *Cancel* |
 | Settings prompt hint | sent unchanged after every finished response | sent unchanged after every finished answer |
 | Toolbar tooltip | ChatGPT Autopilot — running/paused/error, N continuations sent | ChatGPT Autopilot — running/paused/**stopped by an error**, N continuations sent |

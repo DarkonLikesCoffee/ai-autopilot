@@ -80,7 +80,13 @@ button[hidden] { display: none; }
 label { display: block; font-weight: 600; font-size: 13px; }
 textarea, input[type="number"] { width: 100%; font: inherit; font-weight: normal; margin-top: 4px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 textarea { resize: vertical; min-height: 120px; line-height: 1.4; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; align-items: end; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; align-items: start; }
+.field-error { color: var(--danger); font-size: 12px; margin: 4px 0 0; }
+[aria-invalid="true"] { border-color: var(--danger); }
+.unsaved { align-self: center; color: var(--warning); font-size: 12px; font-weight: 600; }
+.unsaved[hidden], .confirm[hidden], .field-error[hidden] { display: none; }
+.confirm { margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--danger); }
+.confirm p { margin: 0; }
 label.check { display: flex; align-items: center; gap: 6px; font-weight: 500; margin-top: 6px; }
 
 .log { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 12px; max-height: 220px; overflow-y: auto; }
