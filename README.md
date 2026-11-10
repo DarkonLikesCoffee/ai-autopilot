@@ -55,12 +55,18 @@ npm run build
 1. Open `chrome://extensions`, turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `dist/` folder.
 3. Reload any ChatGPT tabs that were already open, so the extension can attach.
+   If you forget, the panel says so ("Reload this ChatGPT tab so Autopilot can
+   connect to it") and Start stays unavailable until you do.
 4. Pin the extension. Use the popup, or open the side panel (right-click the
    icon → *Open side panel*) to watch the countdown while you work.
 
 Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
 
 ## The control panel
+
+After a fresh install the panel shows a short **Getting started** card (the
+steps below, links to the `AUTOPILOT.md` template and the privacy page) until
+you choose *Don't show again*. Updates do not show it again.
 
 - **Status:** Running, Waiting for ChatGPT, Continuation in … (with the countdown),
   Paused, Stopped or Stopped by an error, with the reason when it is not running and what to do:

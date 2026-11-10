@@ -80,7 +80,7 @@ const TONE: Record<StatusKey, Tone> = {
 
 /** @param now the current time on the background's clock */
 export function buildView(snapshot: UiSnapshot, now: number): PanelView {
-  const { session, settings, sessionTab, activeTab } = snapshot;
+  const { session, settings, sessionTab, activeTab, activeTabConnected } = snapshot;
   let status: StatusKey;
   if (session.run === 'running') {
     status = session.phase === 'delay' ? 'waiting_delay' : session.phase === 'submitting' ? 'running' : 'waiting_chatgpt';
@@ -120,11 +120,13 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
     statusLabel: status === 'waiting_delay' && countdown !== '—' ? `Continuation in ${countdown}` : STATUS_LABEL[status],
     tone: TONE[status],
     detail,
-    canStart: session.run === 'stopped' && activeTab !== null,
+    canStart: session.run === 'stopped' && activeTab !== null && activeTabConnected !== false,
     canPause: session.run === 'running',
     canResume: session.run === 'paused' || session.run === 'error',
     canStop: session.run !== 'stopped',
-    startHint: session.run === 'stopped' && activeTab === null ? 'Open a ChatGPT conversation in this window, then press Start.' : null,
+    startHint: session.run !== 'stopped' ? null
+      : activeTab === null ? 'Open a ChatGPT conversation in this window, then press Start.'
+        : activeTabConnected === false ? 'Reload this ChatGPT tab so Autopilot can connect to it, then press Start.' : null,
     conversation,
     cycles: `${session.cycles} / ${limit}`,
     generation: GENERATION_TEXT[session.lastStatus],

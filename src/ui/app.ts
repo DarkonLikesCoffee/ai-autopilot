@@ -13,8 +13,21 @@ const MARKUP = `
   <span id="pill" class="pill" data-tone="neutral">Stopped</span>
 </header>
 <main>
+  <section class="card getting-started" id="getting-started" aria-labelledby="gs-title" hidden>
+    <h2 id="gs-title">Getting started</h2>
+    <ol class="steps">
+      <li>Reload any ChatGPT tab that was already open, so Autopilot can connect to it.</li>
+      <li>Open the ChatGPT conversation you want to continue, then press Start.</li>
+      <li>Send your first message yourself. After each answer, Autopilot waits the delay and sends the continuation.</li>
+      <li>The default continuation prompt asks ChatGPT to follow an <code>AUTOPILOT.md</code> file in your project (<a href="https://github.com/DarkonLikesCoffee/ai-autopilot/blob/main/templates/AUTOPILOT.md" target="_blank" rel="noopener noreferrer">template</a>). You can change the prompt in Settings.</li>
+      <li><em>Stop on status marker</em> is off by default. Turn it on in Settings to let ChatGPT's status line stop or pause Autopilot.</li>
+    </ol>
+    <p class="hint">What Autopilot reads and keeps: <a href="https://github.com/DarkonLikesCoffee/ai-autopilot/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer">Privacy</a>.</p>
+    <div class="controls"><button id="btn-gs-dismiss" type="button">Don't show again</button></div>
+  </section>
+
   <section class="card status-card">
-    <p id="status-label" class="status-label">Stopped</p>
+    <p id="status-label" class="status-label" tabindex="-1">Stopped</p>
     <p id="status-detail" class="muted"></p>
     <p id="status-guidance" class="guidance" hidden><strong id="guidance-kind"></strong> <span id="guidance-action"></span></p>
     <div class="controls">
@@ -222,6 +235,7 @@ function render(): void {
   pill.dataset.tone = view.tone;
   $('status-label').textContent = view.statusLabel;
   $('status-detail').textContent = view.detail;
+  $('getting-started').hidden = !snapshot.gettingStarted;
   const guidance = $('status-guidance');
   guidance.hidden = !view.guidance;
   guidance.dataset.kind = view.guidance?.kind ?? '';
@@ -284,6 +298,9 @@ function init(): void {
   $('btn-pause').addEventListener('click', (e) => void act({ type: 'PAUSE' }, e.currentTarget as HTMLButtonElement));
   $('btn-resume').addEventListener('click', (e) => void act({ type: 'RESUME' }, e.currentTarget as HTMLButtonElement));
   $('btn-stop').addEventListener('click', (e) => void act({ type: 'STOP' }, e.currentTarget as HTMLButtonElement));
+  $('btn-gs-dismiss').addEventListener('click', (e) => {
+    void act({ type: 'DISMISS_GETTING_STARTED' }, e.currentTarget as HTMLButtonElement).then(() => $('status-label').focus()); // the card is gone: focus stays in the panel
+  });
   $('btn-report').addEventListener('click', (e) => void copyReport(e.currentTarget as HTMLButtonElement));
 
   const form = $<HTMLFormElement>('settings-form');

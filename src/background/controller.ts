@@ -8,7 +8,7 @@ import type { ContentReport, SubmitRequest, SubmitResult, TabInfo, UiRequest, Ui
 import type { Logger } from '../shared/logger.ts';
 import { conversationPath, markerFailure, transition, type PrecheckFailure, type SessionEffect, type SessionEvent, type TransitionResult } from '../shared/session.ts';
 import { defaultSettings, normalizeSettings, validateSettings } from '../shared/settings.ts';
-import { createSerialQueue, loadSession, loadSettings, saveSession, saveSettings, type StorageAreaLike } from '../shared/storage.ts';
+import { createSerialQueue, loadGettingStarted, loadSession, loadSettings, saveGettingStarted, saveSession, saveSettings, type StorageAreaLike } from '../shared/storage.ts';
 import type { PageObservation, SessionState, Settings } from '../shared/types.ts';
 import { formatDiagnosticReport } from '../shared/report.ts';
 import type { SendDiagnostic } from '../content/sendDiagnostics.ts';
@@ -60,6 +60,8 @@ export interface Controller {
   handleDue(): Promise<void>;
   handleTabRemoved(tabId: number): Promise<void>;
   handleStartup(): Promise<void>;
+  /** chrome.runtime.onInstalled: a fresh install shows the Getting started card. */
+  handleInstalled(reason: string): Promise<void>;
   /** The service worker started (after being stopped by Chrome). */
   handleWake(): Promise<void>;
 }
@@ -206,11 +208,17 @@ export function createController(deps: ControllerDeps): Controller {
   }
 
   async function snapshot(settings: Settings, session: SessionState): Promise<UiSnapshot> {
-    const [sessionTab, activeTab] = await Promise.all([
+    const [sessionTab, activeTab, gettingStarted] = await Promise.all([
       session.tabId === null ? Promise.resolve(null) : safe(tabs.tabInfo(session.tabId), null),
       safe(tabs.activeChatgptTab(), null),
+      safe(loadGettingStarted(storage), false),
     ]);
-    return { settings, session, sessionTab, activeTab, now: deps.now() };
+    // Before Start only: does the tab Start would use answer? The content script
+    // returns its last observation, so this reads nothing new on the page.
+    const activeTabConnected = session.run === 'stopped' && activeTab
+      ? (await safe(tabs.getObservation(activeTab.tabId), null)) !== null
+      : null;
+    return { settings, session, sessionTab, activeTab, activeTabConnected, gettingStarted, now: deps.now() };
   }
 
   /** The tab to resume in: the session's tab if it still exists, otherwise one showing the conversation. */
@@ -285,6 +293,10 @@ export function createController(deps: ControllerDeps): Controller {
         await saveSettings(storage, settings);
         note = 'Settings reset to the defaults, including the continuation prompt.';
         break;
+
+      case 'DISMISS_GETTING_STARTED':
+        await saveGettingStarted(storage, 'dismissed');
+        break;
     }
 
     return { ok: true, snapshot: await snapshot(settings, session), ...(note ? { note } : {}) };
@@ -335,6 +347,12 @@ export function createController(deps: ControllerDeps): Controller {
           log.error(`Request ${request.type} failed`, error);
           return { ok: false, error: 'Something went wrong in the extension. Details are in the service worker console.', ...(snap ? { snapshot: snap } : {}) };
         }
+      });
+    },
+
+    handleInstalled(reason) {
+      return guarded('Install', async () => {
+        if (reason === 'install') await saveGettingStarted(storage, 'show');
       });
     },
 

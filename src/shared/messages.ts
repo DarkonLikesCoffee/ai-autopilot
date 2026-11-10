@@ -13,6 +13,8 @@ export type UiRequest =
   | { type: 'STOP' }
   | { type: 'SAVE_SETTINGS'; settings: Settings }
   | { type: 'RESET_SETTINGS' }
+  /** "Don't show again" on the Getting started card. */
+  | { type: 'DISMISS_GETTING_STARTED' }
   /** A text-free diagnostic report (see report.ts), returned in UiResponse.report. */
   | { type: 'GET_REPORT' };
 
@@ -29,6 +31,14 @@ export interface UiSnapshot {
   sessionTab: TabInfo | null;
   /** The active ChatGPT tab in the current window (where Start would bind), if any. */
   activeTab: TabInfo | null;
+  /**
+   * Whether the active ChatGPT tab's content script answers (it does not in a tab
+   * that was open before Autopilot was installed or updated). Checked only while
+   * stopped; null when not checked or there is no such tab.
+   */
+  activeTabConnected: boolean | null;
+  /** Show the Getting started card (a fresh install, until dismissed). */
+  gettingStarted: boolean;
   /** Background clock, so the UI can show the countdown without clock skew issues. */
   now: number;
 }
@@ -56,7 +66,7 @@ export type ContentCommand =
 
 export type { SubmitRequest, SubmitResult };
 
-const UI_TYPES = new Set<UiRequest['type']>(['GET_SNAPSHOT', 'START', 'PAUSE', 'RESUME', 'STOP', 'SAVE_SETTINGS', 'RESET_SETTINGS', 'GET_REPORT']);
+const UI_TYPES = new Set<UiRequest['type']>(['GET_SNAPSHOT', 'START', 'PAUSE', 'RESUME', 'STOP', 'SAVE_SETTINGS', 'RESET_SETTINGS', 'DISMISS_GETTING_STARTED', 'GET_REPORT']);
 
 export function isUiRequest(value: unknown): value is UiRequest {
   if (!value || typeof value !== 'object') return false;

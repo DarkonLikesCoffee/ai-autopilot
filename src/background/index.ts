@@ -166,7 +166,8 @@ chrome.notifications.onClicked.addListener((notificationId) => {
   })();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
+  void controller.handleInstalled(details.reason);
   chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: false }).catch((error: unknown) => log.warn('Side panel setup failed', error));
 });
 

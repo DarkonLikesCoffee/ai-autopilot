@@ -69,7 +69,7 @@ A CI step runs it and uploads the zip as a workflow artefact. A short `docs/RELE
 4. What the continuation prompt expects (`AUTOPILOT.md`, linking the template), and that it can be changed.
 5. Stop on status marker is off by default.
 
-The card has a link to `PRIVACY.md` and a "Don't show again" choice, stored with the settings. Also a proactive hint before Start: if the active ChatGPT tab has no connected content script (the existing `GET_OBSERVATION` gets no answer), show "Reload this tab so Autopilot can connect", instead of failing at Start. No new permission; no opening of tabs.
+The card has a link to `PRIVACY.md` and a "Don't show again" choice, stored with the settings. *(As built: stored next to the settings in `chrome.storage.local`, under its own key `autopilot.gettingStarted`, not inside the settings object, so that saving or resetting the settings never brings the card back.)* Also a proactive hint before Start: if the active ChatGPT tab has no connected content script (the existing `GET_OBSERVATION` gets no answer), show "Reload this tab so Autopilot can connect", instead of failing at Start. No new permission; no opening of tabs.
 
 **C-5 States and messages copy review (P-5).** One table in `docs/design/` lists every status, halt reason, detail, guidance line, banner and start refusal: current text, proposed text, and the term used. Then apply it, with:
 - one term per concept ("continuation" for what Autopilot sends, "answer" for ChatGPT's reply, "status line");

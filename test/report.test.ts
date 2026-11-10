@@ -33,6 +33,8 @@ function snapshotWithSecrets(): UiSnapshot {
     session,
     sessionTab: { tabId: 7, title: 'SECRET conversation title', conversation: '/c/SECRET-CONVERSATION-ID' },
     activeTab: { tabId: 7, title: 'SECRET conversation title', conversation: '/c/SECRET-CONVERSATION-ID' },
+    activeTabConnected: null,
+    gettingStarted: false,
     now: NOW,
   };
 }

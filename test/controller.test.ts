@@ -990,3 +990,38 @@ test('with the alarm never firing, the page ping alone sends the continuation wh
   await h.controller.handleContent(TAB, { type: 'DUE_PING' });
   assert.equal(h.submits.length, 1, 'sent at the configured delay, without any alarm');
 });
+
+// --- M5 C-4: Getting started and the reload hint ---
+
+test('C-4: a fresh install shows Getting started until dismissed; an update never shows it', async () => {
+  const fresh = harness();
+  assert.equal(ok(await fresh.ui('GET_SNAPSHOT')).snapshot.gettingStarted, false, 'nothing stored: not shown');
+  await fresh.controller.handleInstalled('install');
+  assert.equal(ok(await fresh.ui('GET_SNAPSHOT')).snapshot.gettingStarted, true);
+  ok(await fresh.controller.handleUi({ type: 'SAVE_SETTINGS', settings: testSettings({ delaySeconds: 7 }) }));
+  ok(await fresh.controller.handleUi({ type: 'RESET_SETTINGS' }));
+  assert.equal(ok(await fresh.ui('GET_SNAPSHOT')).snapshot.gettingStarted, true, 'saving or resetting the settings does not touch it');
+  assert.equal(ok(await fresh.controller.handleUi({ type: 'DISMISS_GETTING_STARTED' })).snapshot.gettingStarted, false);
+  fresh.restartWorker();
+  assert.equal(ok(await fresh.ui('GET_SNAPSHOT')).snapshot.gettingStarted, false, 'the dismissal is kept');
+  await fresh.controller.handleInstalled('update');
+  assert.equal(ok(await fresh.ui('GET_SNAPSHOT')).snapshot.gettingStarted, false, 'an update does not bring it back');
+
+  const updated = harness();
+  await updated.controller.handleInstalled('update');
+  assert.equal(ok(await updated.ui('GET_SNAPSHOT')).snapshot.gettingStarted, false, 'existing users are not shown it');
+});
+
+test('C-4: the snapshot says whether the active tab is connected, before Start only', async () => {
+  const h = harness();
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.activeTabConnected, true);
+  h.page.reachable = false;
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.activeTabConnected, false, 'a tab open before the install does not answer');
+  h.page.active = false;
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.activeTabConnected, null, 'no ChatGPT tab: not checked');
+  h.page.active = true;
+  h.page.reachable = true;
+  ok(await h.ui('START'));
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.activeTabConnected, null, 'while running it is not checked');
+  assert.equal(h.submits.length, 0, 'the check sends nothing');
+});
