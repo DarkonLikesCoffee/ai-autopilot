@@ -193,7 +193,7 @@ function pageChangedWhileWaiting(doc: Document, url: string, selectors: Selector
       return '';
     }
   })();
-  const vanished: SubmitResult = { outcome: 'uncertain', detail: 'the prompt left the message box before Autopilot clicked send' };
+  const vanished: SubmitResult = { outcome: 'uncertain', detail: 'the continuation left the message box before Autopilot clicked Send' };
   if (!box) return vanished;
   if (box !== typedInto) {
     // The box was re-rendered. If the prompt moved over, take it out: nothing was
@@ -237,7 +237,7 @@ export async function submitContinuation(
   const el = findComposer(doc, selectors);
   if (!el) return { outcome: 'not_submitted', reason: 'no_composer', detail: 'the message box was not found' };
   if (el.getAttribute('aria-disabled') === 'true' || (isTextArea(el) && el.disabled)) {
-    return { outcome: 'not_submitted', reason: 'composer_disabled', detail: 'the message box is disabled' };
+    return { outcome: 'not_submitted', reason: 'composer_disabled', detail: 'the message box was disabled' };
   }
 
   // 1. Type the prompt and verify it is exactly what the box contains.
@@ -261,7 +261,7 @@ export async function submitContinuation(
   diagnose('typed');
   if (normalize(composerText(el)) !== normalize(request.text)) {
     clearComposer(doc, el);
-    return { outcome: 'not_submitted', reason: 'insert_failed', detail: 'the prompt could not be typed into the message box reliably' };
+    return { outcome: 'not_submitted', reason: 'insert_failed', detail: 'the continuation could not be typed into the message box' };
   }
 
   // 2. Wait for the send button to become usable, then click it once. Before
@@ -277,7 +277,7 @@ export async function submitContinuation(
       return {
         outcome: 'not_submitted',
         reason: 'tab_suspended',
-        detail: `the tab was suspended or throttled for ${Math.round(elapsed / 1000)}s while the prompt waited (a hidden or frozen tab), so send was not clicked`,
+        detail: `the browser paused the ChatGPT tab for ${Math.round(elapsed / 1000)} s, so Send was not clicked`,
       };
     }
     const changed = pageChangedWhileWaiting(doc, getUrl(), selectors, request, el);
@@ -296,7 +296,7 @@ export async function submitContinuation(
     if (!removePrompt(doc, el, request.text)) {
       return { outcome: 'refused', reason: 'composer_has_text' };
     }
-    return { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the send button did not become available' };
+    return { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the Send button was not available' };
   }
   diagnose('clicking_send');
   const userCountBefore = observePage(doc, getUrl(), selectors).signals.userMessageCount;
@@ -317,7 +317,7 @@ export async function submitContinuation(
   if (box && normalize(composerText(box)) === normalize(request.text)) {
     // The prompt is still sitting in the box: it was not sent. Remove it again.
     removePrompt(doc, box, request.text);
-    return { outcome: 'not_submitted', reason: 'not_sent', detail: 'clicking send did not send the message' };
+    return { outcome: 'not_submitted', reason: 'not_sent', detail: 'clicking Send did not send the continuation' };
   }
-  return { outcome: 'uncertain', detail: 'the message box was emptied but no sent message or response appeared' };
+  return { outcome: 'uncertain', detail: 'the message box was emptied, but no sent message or answer appeared' };
 }

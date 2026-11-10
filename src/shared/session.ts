@@ -112,25 +112,43 @@ export function isSavedConversation(path: string | null): boolean {
   return !!path && /\/c\/[^/]+/.test(path);
 }
 
+/**
+ * What happened, as one sentence without its final period (copy review C-5,
+ * docs/design/m5-copy-review.md). Use haltSentence to show it.
+ */
 export const REASON_TEXT: Record<HaltReason, string> = {
-  user: 'By you',
-  max_cycles: 'Maximum number of continuations reached',
+  user: 'Paused by you',
+  max_cycles: 'The maximum number of continuations was sent',
   usage_limit: 'ChatGPT shows a usage limit',
   auth_required: 'ChatGPT asks you to log in',
   page_error: 'ChatGPT shows an error',
-  conversation_changed: 'The tab switched to a different conversation',
+  conversation_changed: 'The ChatGPT tab now shows a different conversation',
   tab_closed: 'The ChatGPT tab was closed',
-  browser_restarted: 'The browser or the extension restarted',
-  composer_has_text: 'The message box already contains text',
+  browser_restarted: 'The browser or Autopilot restarted',
+  composer_has_text: 'The message box already contained text',
   submit_failed: 'The continuation could not be sent',
-  submission_uncertain: 'It is unclear whether the last continuation was sent',
+  submission_uncertain: 'Autopilot could not confirm that the continuation was sent',
   tab_unreachable: 'The ChatGPT tab did not respond',
-  unrecognized_notice: 'ChatGPT shows a notice Autopilot does not recognize (check the page; nothing was sent)',
+  unrecognized_notice: 'ChatGPT shows a notice that Autopilot does not recognize. Nothing was sent',
   no_response: 'ChatGPT did not start answering the continuation',
-  no_new_answer: 'ChatGPT finished without a new answer',
-  marker_complete: 'ChatGPT reports the milestone complete (status line in its last answer)',
-  marker_blocked: 'ChatGPT reports it is blocked (status line in its last answer)',
-  marker_unclear: 'Unclear status line in ChatGPT\'s last answer',
+  no_new_answer: 'ChatGPT stopped without a new answer',
+  marker_complete: 'ChatGPT\'s status line says the milestone is complete',
+  marker_blocked: 'ChatGPT\'s status line says it is blocked',
+  marker_unclear: 'The status line in ChatGPT\'s last answer is unclear',
+};
+
+/** The reason as shown everywhere: "Reason." or "Reason: detail." (one final period). */
+export function haltSentence(reason: HaltReason, detail: string | null): string {
+  const text = REASON_TEXT[reason];
+  const extra = detail?.trim().replace(/\.+$/, '') ?? '';
+  return extra ? `${text}: ${extra}.` : `${text}.`;
+}
+
+/** The run state as words for log lines and notification titles. */
+export const HALT_LABEL: Record<Exclude<RunState, 'running'>, string> = {
+  paused: 'Paused',
+  stopped: 'Stopped',
+  error: 'Stopped by an error',
 };
 
 function log(state: SessionState, now: number, message: string): SessionState {
@@ -153,17 +171,17 @@ function halt(state: SessionState, run: Exclude<RunState, 'running'>, reason: Ha
     pendingKey: keepPending || state.phase === 'submitting' ? state.pendingKey : null,
     dueAt: null,
   };
-  const label = run === 'stopped' ? 'Stopped' : run === 'paused' ? 'Paused' : 'Error';
+  const label = HALT_LABEL[run];
   const effects: SessionEffect[] = [{ type: 'cancel_schedule' }];
   if (reason !== 'user') {
     effects.push({
       type: 'notify',
       id: `halt:${run}:${reason}:${now}`,
       title: `Autopilot ${label.toLowerCase()}`,
-      message: detail ? `${REASON_TEXT[reason]}: ${detail}` : `${REASON_TEXT[reason]}.`,
+      message: haltSentence(reason, detail),
     });
   }
-  const message = reason === 'user' ? `${label} by you.` : `${label}: ${REASON_TEXT[reason]}${detail ? ` (${detail})` : ''}.`;
+  const message = reason === 'user' ? `${label} by you.` : `${label}: ${haltSentence(reason, detail)}`;
   return { state: log(next, now, message), effects };
 }
 
@@ -175,7 +193,7 @@ function schedule(state: SessionState, key: string, settings: Timing, now: numbe
   const dueAt = now + settings.delaySeconds * 1000;
   const next: SessionState = { ...state, phase: 'delay', pendingKey: key, dueAt, generationSeen: false };
   return {
-    state: log(next, now, `Response complete. Continuation ${state.cycles + 1} in ${settings.delaySeconds}s.`),
+    state: log(next, now, `Answer finished. Continuation ${state.cycles + 1} in ${settings.delaySeconds} s.`),
     effects: [{ type: 'schedule', dueAt }],
   };
 }
@@ -217,7 +235,7 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
   if (state.conversation !== path) {
     // A new chat gets its conversation path when the first message is sent: same tab, same session.
     if (!isSavedConversation(state.conversation) && isSavedConversation(path)) {
-      next = log({ ...next, conversation: path }, now, 'The new chat was saved as a conversation; following it.');
+      next = log({ ...next, conversation: path }, now, 'The new chat was saved as a conversation. Following it.');
     } else {
       if (state.run !== 'running') return { state, effects: [] };
       return halt(state, 'paused', 'conversation_changed', now);
@@ -234,19 +252,19 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
 
   switch (status) {
     case 'usage_limit':
-      return halt(next, 'error', 'usage_limit', now, 'Nothing will be sent until you resume.');
+      return halt(next, 'error', 'usage_limit', now, 'nothing is sent until you press Resume');
     case 'error':
       return observation.signals.authRequired ? halt(next, 'error', 'auth_required', now) : halt(next, 'error', 'page_error', now);
     case 'generating':
       next.awaitingResponseSince = null;
       if (!state.generationSeen && state.phase === 'watching') {
         // Once per response: the log then shows that ChatGPT was seen working.
-        next = log(next, now, 'ChatGPT is generating a response.');
+        next = log(next, now, 'ChatGPT is answering.');
       }
       next.generationSeen = true;
       if (state.phase === 'delay') {
         // A new response started before the delay ended (for example you sent a message): nothing is sent for the old one.
-        next = log({ ...next, phase: 'watching', pendingKey: null, dueAt: null }, now, 'ChatGPT started generating again; the pending continuation was cancelled.');
+        next = log({ ...next, phase: 'watching', pendingKey: null, dueAt: null }, now, 'ChatGPT started answering again. The pending continuation was cancelled.');
         return { state: next, effects: [{ type: 'cancel_schedule' }] };
       }
       return { state: next, effects: [] };
@@ -262,7 +280,7 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
         // move the single pending continuation to it, with a fresh delay. A key that
         // was already answered never becomes the target.
         const dueAt = now + settings.delaySeconds * 1000;
-        next = log({ ...next, pendingKey: key, dueAt }, now, `The finished response was updated on the page; continuation ${state.cycles + 1} in ${settings.delaySeconds}s.`);
+        next = log({ ...next, pendingKey: key, dueAt }, now, `The answer changed on the page. Continuation ${state.cycles + 1} in ${settings.delaySeconds} s.`);
         return { state: next, effects: [{ type: 'schedule', dueAt }] };
       }
       if (state.phase === 'watching' && state.generationSeen && key !== null && state.answeredKeys.includes(key)) {
@@ -274,7 +292,7 @@ function observe(state: SessionState, event: Extract<SessionEvent, { type: 'OBSE
       if (state.phase !== 'watching' || !state.generationSeen || key === null || state.answeredKeys.includes(key)) {
         return { state: next, effects: [] };
       }
-      if (limitReached(state, settings)) return halt(next, 'stopped', 'max_cycles', now, `${settings.maxCycles} sent`);
+      if (limitReached(state, settings)) return halt(next, 'stopped', 'max_cycles', now, `${settings.maxCycles} of ${settings.maxCycles}`);
       const markerHalt = haltForMarker(next, key, observation.signals.statusMarker, settings, now);
       if (markerHalt) return markerHalt;
       return schedule(next, key, settings, now);
@@ -291,12 +309,12 @@ export function transition(state: SessionState, event: SessionEvent): Transition
   const { now } = event;
   switch (event.type) {
     case 'START': {
-      if (state.run !== 'stopped') return reject(state, 'Autopilot is already active. Stop it before starting a new session.');
+      if (state.run !== 'stopped') return reject(state, 'Autopilot is already running. Press Stop first to start again.');
       const conversation = conversationPath(event.observation.url);
       const status = event.observation.status;
-      if (status === 'usage_limit') return reject(state, 'ChatGPT is showing a usage limit. Start Autopilot once it is lifted.');
-      if (event.observation.signals.authRequired) return reject(state, 'ChatGPT asks you to log in first.');
-      if (!event.observation.signals.composerFound) return reject(state, 'The ChatGPT message box was not found in this tab.');
+      if (status === 'usage_limit') return reject(state, 'ChatGPT shows a usage limit. Press Start once it is lifted.');
+      if (event.observation.signals.authRequired) return reject(state, 'ChatGPT asks you to log in. Log in, then press Start.');
+      if (!event.observation.signals.composerFound) return reject(state, 'The message box was not found in this tab. Reload it, then press Start.');
       const next: SessionState = {
         ...initialSession(),
         run: 'running',
@@ -308,7 +326,7 @@ export function transition(state: SessionState, event: SessionEvent): Transition
         startedAt: now,
         log: state.log,
       };
-      return { state: log(next, now, 'Autopilot started. Waiting for ChatGPT to finish a response.'), effects: [] };
+      return { state: log(next, now, 'Started. Waiting for ChatGPT\'s answer.'), effects: [] };
     }
 
     case 'OBSERVATION':
@@ -323,12 +341,12 @@ export function transition(state: SessionState, event: SessionEvent): Transition
         now >= state.awaitingResponseSince + NO_RESPONSE_MS - DUE_TOLERANCE_MS
       ) {
         // A continuation went out but ChatGPT never started answering (a notice instead of a response?).
-        return halt({ ...state, awaitingResponseSince: null }, 'paused', 'no_response', now, `nothing was generated within ${NO_RESPONSE_MS / 1000}s; nothing more was sent`);
+        return halt({ ...state, awaitingResponseSince: null }, 'paused', 'no_response', now, `no answer started within ${NO_RESPONSE_MS / 1000} s, and nothing more was sent`);
       }
       if (state.run === 'running' && state.phase === 'submitting' && state.submitStartedAt !== null && now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
         // Scheduled by WAKE: the attempt's result never arrived. Its response stays
         // answered; a result that still arrives is applied (as after any pause).
-        return halt(state, 'paused', 'submission_uncertain', now, 'no result was received for the last attempt');
+        return halt(state, 'paused', 'submission_uncertain', now, 'no result arrived for the last attempt');
       }
       if (state.run !== 'running' || state.phase !== 'delay' || state.pendingKey === null || state.dueAt === null) return { state, effects: [] };
       if (now < state.dueAt - DUE_TOLERANCE_MS) return { state, effects: [] };
@@ -342,22 +360,22 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       });
       switch (event.reason) {
         case 'generating':
-          return toWatching('ChatGPT is generating again; nothing was sent.', true);
+          return toWatching('ChatGPT started answering again. Nothing was sent.', true);
         case 'response_changed':
           // Still the same turn (no new generation was seen), so the generation stays
           // seen: the response that is now the latest can be continued once, unless it
           // was already answered.
-          return toWatching('A different response is now the latest; nothing was sent.', true);
+          return toWatching('A different answer is now the latest. Nothing was sent.', true);
         case 'not_complete':
-          return halt(state, 'paused', 'submission_uncertain', now, 'the page state could not be confirmed, so nothing was sent');
+          return halt(state, 'paused', 'submission_uncertain', now, 'the ChatGPT tab could not be checked before sending, so nothing was sent');
         case 'composer_has_text':
-          return halt(state, 'paused', 'composer_has_text', now, 'nothing was sent so your text is kept');
+          return halt(state, 'paused', 'composer_has_text', now, 'nothing was sent, so your text is kept');
         case 'conversation_changed':
           return halt(state, 'paused', 'conversation_changed', now);
         case 'tab_unreachable':
           return halt(state, 'error', 'tab_unreachable', now);
         case 'usage_limit':
-          return halt(state, 'error', 'usage_limit', now, 'Nothing will be sent until you resume.');
+          return halt(state, 'error', 'usage_limit', now, 'nothing is sent until you press Resume');
         case 'auth_required':
           return halt(state, 'error', 'auth_required', now);
         case 'unrecognized_notice':
@@ -376,7 +394,7 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       if (state.run !== 'running' || state.phase !== 'delay' || state.pendingKey !== event.key) {
         return reject(state, 'The continuation is no longer pending.');
       }
-      if (state.answeredKeys.includes(event.key)) return reject(state, 'A continuation was already sent for this response.');
+      if (state.answeredKeys.includes(event.key)) return reject(state, 'A continuation was already sent for this answer.');
       const next: SessionState = {
         ...state,
         phase: 'submitting',
@@ -398,7 +416,7 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       };
       if (state.run !== 'running') {
         // Paused or stopped during the attempt: just drop it.
-        return { state: log({ ...pending, phase: 'watching', pendingKey: null }, now, 'The page refused the continuation; nothing was sent.'), effects: [] };
+        return { state: log({ ...pending, phase: 'watching', pendingKey: null }, now, 'The ChatGPT tab refused the continuation. Nothing was sent.'), effects: [] };
       }
       return transition(pending, { type: 'PRECHECK_FAILED', key: event.key, reason: event.reason, now });
     }
@@ -427,31 +445,31 @@ export function transition(state: SessionState, event: SessionEvent): Transition
     }
 
     case 'PAUSE':
-      if (state.run !== 'running') return reject(state, 'Only a running session can be paused.');
+      if (state.run !== 'running') return reject(state, 'Autopilot is not running.');
       return halt(state, 'paused', 'user', now);
 
     case 'RESUME': {
-      if (state.run !== 'paused' && state.run !== 'error') return reject(state, 'Only a paused or stopped-by-error session can be resumed.');
+      if (state.run !== 'paused' && state.run !== 'error') return reject(state, 'There is nothing to resume.');
       const tabId = state.tabId ?? event.tabId;
       if (tabId === null || event.observation === null) {
-        return reject(state, 'Open the conversation this session belongs to, then resume.');
+        return reject(state, 'Open the conversation Autopilot was working in, then press Resume.');
       }
       const path = conversationPath(event.observation.url);
       if (state.conversation !== null && path !== state.conversation && isSavedConversation(state.conversation)) {
-        return reject(state, 'This tab shows a different conversation. Go back to the session\'s conversation, or stop and start a new session.');
+        return reject(state, 'This tab shows a different conversation. Go back to the original one, or press Stop and start again.');
       }
       if (event.observation.status === 'usage_limit') return reject(state, 'ChatGPT still shows a usage limit.');
       let next: SessionState = { ...state, run: 'running', reason: null, detail: null, tabId };
       if ((state.reason === 'marker_blocked' || state.reason === 'marker_unclear') && state.markerKey !== null) {
         // Resume is your explicit override for that one response's marker.
-        next = log({ ...next, markerAcknowledgedKey: state.markerKey, generationSeen: true }, now, 'Resumed despite the status line; that answer is continued once.');
+        next = log({ ...next, markerAcknowledgedKey: state.markerKey, generationSeen: true }, now, 'Resumed despite the status line. The continuation is sent to this answer once; later answers are checked again.');
       }
       const lastAnswered = state.answeredKeys[state.answeredKeys.length - 1];
       if (lastAnswered && event.observation.responseKey && keyForm(lastAnswered) !== keyForm(event.observation.responseKey) && next.markerAcknowledgedKey !== event.observation.responseKey) {
         // The answered responses were recorded in another key form (an extension update
         // changed id-based vs count-based keys), so "already answered" cannot be checked:
         // wait for a new generation instead of continuing the response on the page.
-        next = log({ ...next, generationSeen: false }, now, 'Response identification changed since the last continuation; waiting for ChatGPT\'s next answer.');
+        next = log({ ...next, generationSeen: false }, now, 'Waiting for ChatGPT\'s next answer (answers are identified differently since the update).');
       }
       const effects: SessionEffect[] = [];
       if (next.phase === 'submitting') {
@@ -472,7 +490,7 @@ export function transition(state: SessionState, event: SessionEvent): Transition
     }
 
     case 'STOP':
-      if (state.run === 'stopped') return reject(state, 'Autopilot is not active.');
+      if (state.run === 'stopped') return reject(state, 'Autopilot is not running.');
       return halt(state, 'stopped', 'user', now);
 
     case 'TAB_CLOSED': {
@@ -495,7 +513,7 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       if (state.run !== 'running') return { state, effects: [] };
       if (state.phase === 'submitting' && state.submitStartedAt !== null) {
         if (now - state.submitStartedAt > SUBMIT_TIMEOUT_MS) {
-          return halt(state, 'paused', 'submission_uncertain', now, 'no result was received for the last attempt');
+          return halt(state, 'paused', 'submission_uncertain', now, 'no result arrived for the last attempt');
         }
         // The page reports the result on its own; if it never does, check again once it is overdue.
         return { state, effects: [{ type: 'schedule', dueAt: state.submitStartedAt + SUBMIT_TIMEOUT_MS + 1000 }] };

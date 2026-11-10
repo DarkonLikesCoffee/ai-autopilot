@@ -99,7 +99,7 @@ async function updateBadge(state: SessionState): Promise<void> {
   try {
     await chrome.action.setBadgeText({ text: badge?.text ?? '' });
     if (badge) await chrome.action.setBadgeBackgroundColor({ color: badge.color });
-    const status = state.run === 'stopped' ? 'stopped' : `${state.run}, ${state.cycles} continuation${state.cycles === 1 ? '' : 's'} sent`;
+    const status = state.run === 'stopped' ? 'stopped' : `${state.run === 'error' ? 'stopped by an error' : state.run}, ${state.cycles} continuation${state.cycles === 1 ? '' : 's'} sent`;
     await chrome.action.setTitle({ title: `ChatGPT Autopilot — ${status}` });
   } catch (error) {
     log.warn('Badge update failed', error);

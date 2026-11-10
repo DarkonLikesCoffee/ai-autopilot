@@ -31,7 +31,7 @@ is open. It is displayed only, never stored. Code: `src/background/index.ts`
 | **Settings** (`autopilot.settings.v2`) | `prompt` (**your continuation prompt, as text**), `delaySeconds`, `confirmSeconds`, `maxCycles`, `notifications`, `stopOnMarker`, `schemaVersion` | `chrome.storage.local` (this browser profile, this computer) | Until you change them | *Reset to defaults* resets them; uninstalling removes them |
 | **Session state** (`autopilot.session.v2`): `run`, `phase`, `reason`, `detail`, `cycles`, `generationSeen`, `dueAt`, `submitStartedAt`, `lastStatus`, `lastContinuationAt`, `awaitingResponseSince`, `startedAt`, `updatedAt`, `tabId`, `schemaVersion` | Run state, counters, times, the browser's tab number | `chrome.storage.local` | Overwritten by each new session | Uninstalling removes it |
 | **Identifiers** in the session: `conversation` (the conversation's path, `/c/<conversation id>`), `pendingKey`, `markerKey`, `markerAcknowledgedKey` and `answeredKeys` (each `/c/<conversation id>\|id:<message id>`, or `\|n:<count>`) | **ChatGPT conversation ids and message ids. No message text** | `chrome.storage.local` | `answeredKeys`: the **last 200** responses, **kept across sessions** (so an answered response is never answered again); the others: until the next session | Uninstalling removes them (Stop and Start do not) |
-| **Activity log** (`log` in the session) | Up to the **last 40** entries: time plus a message written by the extension (e.g. "Continuation 2 sent.", "Paused: ChatGPT shows a usage limit."). Never page text or ids | `chrome.storage.local` | Kept across sessions, last 40 | Uninstalling removes it |
+| **Activity log** (`log` in the session) | Up to the **last 40** entries: time plus a message written by the extension (e.g. "Continuation 2 sent.", "Paused: ChatGPT's status line says it is blocked."). Never page text or ids | `chrome.storage.local` | Kept across sessions, last 40 | Uninstalling removes it |
 | Browser-session marker (`autopilot.browserSession`) | `true` | `chrome.storage.session` (memory, cleared when the browser closes) | Until the browser closes | Automatically |
 | Diagnostics switch (`chatgpt-autopilot:debug`) | `'1'`, **only if you set it yourself** in the ChatGPT tab's console | ChatGPT's own `localStorage` (chatgpt.com) | Until you remove it | `localStorage.removeItem('chatgpt-autopilot:debug')` in that tab |
 | Last send-step record | Structure only: selector match counts, attributes, lengths and flags (no text) | Memory of the ChatGPT tab | Until the tab is closed or reloaded | Automatically |
@@ -51,7 +51,7 @@ Code: `src/shared/storage.ts` (keys), `src/shared/settings.ts`,
   observations (status, counts, booleans, ids, the status-marker result),
   never text. The validator rejects anything else (`src/shared/messages.ts`).
 - **Notifications** (optional, setting *Notifications*): fixed texts written
-  by the extension, e.g. "Autopilot paused: ChatGPT shows a usage limit."
+  by the extension, e.g. "Autopilot stopped by an error" with "ChatGPT shows a usage limit."
 - **Diagnostic report** (only when you click *Copy diagnostic report*): copied
   to your clipboard for you to share. It contains settings (the prompt only as
   its length), session state, the activity log and page signals. Conversation

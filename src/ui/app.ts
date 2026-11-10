@@ -41,7 +41,7 @@ const MARKUP = `
   <details class="card" id="settings">
     <summary><h2>Settings</h2></summary>
     <form id="settings-form" novalidate>
-      <label for="s-prompt">Continuation prompt <span class="hint">sent unchanged after every finished response</span></label>
+      <label for="s-prompt">Continuation prompt <span class="hint">sent unchanged after every finished answer</span></label>
       <textarea id="s-prompt" rows="9" maxlength="${LIMITS.promptMaxLength}" spellcheck="true"></textarea>
       <div class="grid">
         <label>Delay before sending (s)<input id="s-delay" type="number" min="${LIMITS.delaySeconds.min}" max="${LIMITS.delaySeconds.max}" step="1"></label>

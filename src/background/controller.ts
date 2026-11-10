@@ -175,7 +175,7 @@ export function createController(deps: ControllerDeps): Controller {
     const now = deps.now();
     let event: SessionEvent;
     if (result === null) {
-      event = { type: 'SUBMIT_RESULT', key, outcome: 'uncertain', detail: 'the ChatGPT tab did not answer', sawGenerating: false, now };
+      event = { type: 'SUBMIT_RESULT', key, outcome: 'uncertain', detail: 'the ChatGPT tab did not respond', sawGenerating: false, now };
     } else if (result.outcome === 'refused') {
       event = { type: 'SUBMIT_REFUSED', key, reason: result.reason, now };
     } else if (result.outcome === 'submitted') {
@@ -243,15 +243,15 @@ export function createController(deps: ControllerDeps): Controller {
         const issues = validateSettings(settings);
         if (issues.length) throw new UserError(`Fix the settings first: ${issues.map((i) => i.message).join(' ')}`);
         const tab = await safe(tabs.activeChatgptTab(), null);
-        if (!tab) throw new UserError('Open your ChatGPT conversation in this window and make it the active tab, then start Autopilot.');
+        if (!tab) throw new UserError('Open the ChatGPT conversation in this window and select its tab, then press Start.');
         const observation = await safe(tabs.getObservation(tab.tabId), null);
         if (!observation) {
-          throw new UserError('Autopilot is not connected to that tab yet (it was open before the extension was installed or updated). Reload the ChatGPT tab, then start again.');
+          throw new UserError('Autopilot is not connected to this tab yet. Reload the ChatGPT tab, then press Start.');
         }
         await run({ type: 'START', tabId: tab.tabId, observation, now });
         note = observation.status === 'generating'
-          ? 'Autopilot started. It continues once ChatGPT finishes this response.'
-          : 'Autopilot started. Send your first message; Autopilot continues each time ChatGPT finishes.';
+          ? 'Started. Autopilot sends the continuation after ChatGPT finishes this answer.'
+          : 'Started. Send your first message yourself; Autopilot sends the continuation after each answer.';
         break;
       }
 
@@ -283,7 +283,7 @@ export function createController(deps: ControllerDeps): Controller {
       case 'RESET_SETTINGS':
         settings = defaultSettings();
         await saveSettings(storage, settings);
-        note = 'Settings reset to the defaults.';
+        note = 'Settings reset to the defaults, including the continuation prompt.';
         break;
     }
 
