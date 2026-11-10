@@ -98,6 +98,7 @@ Authoritative status of every live test. Procedure and capture steps: `docs/LIVE
 | L2 | English interface | Same as S1/S2 | Detection / sending | NOT RUN: documented exception (not required by the DoD) |
 | N4 | An unrecognized notice appears (e.g. a Spanish usage-limit or error notice), during a countdown or instead of an answer | Paused, "ChatGPT shows a notice Autopilot does not recognize" (or "did not start answering" / "finished without a new answer"); nothing sent | Error states | NOT RUN (cannot be triggered on demand; unit + E2E tested) |
 | R5 | Run 5: after the notice fail-safe change, repeat S1–S2 on es-ES | Same as S1–S2: no unexpected pause | Regression | **VERIFIED** (Run 5) |
+| R6 | Run 6: after #29 (live message identification, uuid keys), repeat S1–S2 | Same as S1–S2 | Regression | **VERIFIED** behaviourally (Run 6, user-reported: worked, no issues; max 3, marker setting off, continuation prompt `hey`). Per-answer key diagnostics not recorded |
 
 M1's definition of done needs, at minimum: D1–D6, S1–S4 and P1 VERIFIED; S5/S6 observed and their behaviour documented; N1–N3 VERIFIED when they occur, or explicitly accepted as untestable on demand by the owner (they are covered by unit and E2E tests). *Updated 2026-11-05 by owner decision:* D1/D3/D4/D6 may be met by documented indirect coverage; N1–N3 stay unverified live with documented coverage; L2 is a documented exception.
 
@@ -169,7 +170,19 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 - [x] **Behaviour**: [VERIFIED] T7 part 2. The setting is off by default (older stored settings stay off). COMPLETE stops (*Finished*); BLOCKED and unclear pause (*Fix first*); missing or CONTINUE continue. The marker is checked again in the background precheck and in the page's own precheck. **Resume after a marker pause is your override for that one response** (it is continued once; later answers are checked again).
 - [x] **Docs**: [VERIFIED] T7 part 3. README privacy wording (R10) and a "Stop on status marker" section; the exception added to principle 10 (section 3), section 2 and `CLAUDE.md`; the template now states the exact last-line rule; live rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`.
 - [x] **Checks**: [VERIFIED] `npm run check` (176 tests); `npm run e2e` incl. three M3 scenarios (code-block marker ignored, then COMPLETE stops with *Finished*; BLOCKED pauses and Resume overrides once; setting off ignores the line).
-- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. **M3-L0 PASSED 2026-11-10** (after #29): `answerContentElements: 1`, `id:<uuid>` response key (it had failed on 2026-11-09 with `.markdown`). M3-L1 to L6 pending, with step-by-step prompts in the live doc. Then an M1 regression run (S1–S2), since #29 changed how responses are identified.
+- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. Status per row (2026-11-10):
+
+  | Row | What it proves | Evidence | Status |
+  |---|---|---|---|
+  | M3-L0 | The live answer content and message id are isolated | Diagnostic (owner): `answerContentElements: 1`, `id:<uuid>` key | **PASS** |
+  | M3-L1 | With the setting off, a marker line is ignored | none yet. Run 6 ran with the setting off, but its answers had no marker line, so it does not show that a marker is ignored | NOT RUN |
+  | M3-L2 | CONTINUE continues | none yet | NOT RUN |
+  | M3-L3 | MILESTONE COMPLETE stops (*Finished*), nothing sent | none yet | NOT RUN |
+  | M3-L4 | BLOCKED pauses; Resume sends exactly one | none yet | NOT RUN |
+  | M3-L5 | A marker inside a code block is ignored on the live page (code is a widget there, not `pre`/`code`) | none yet | NOT RUN |
+  | M3-L6 | The diagnostic report shows the marker result but no answer text, after a marker run | none yet. The M2 report check (2026-11-06) predates M3 | NOT RUN |
+
+  M1 regression after #29 (R6): **PASS**, behavioural and user-reported (see the matrix).
 
 ## 6. Prioritized roadmap
 
@@ -283,12 +296,14 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-09 | Probe v1 result (owner): the assistant selector matches an `sr-only` `h4` turn heading, not the message; explains M3-L0 and indicates count-based live keys. Probe v2: walks up from the match to its turn (stopping before an ancestor with a second assistant match), reports every candidate selector's count and latest element, and dumps the turn's structure with which candidates match each node; still text-free. E2E: v2 on the fake page and on a hidden-heading test layout (a fixture, not a claim about ChatGPT). | [VERIFIED] probe in tests; live v2 output pending. | `npm run check` PASS (177 tests); `npm run e2e` PASS. |
 | 2026-11-10 | Live message identification and answer isolation fixed from probe v2 evidence (see section 9): unit first, id-based keys, `[data-markdown-text-style="assistant-message"]`, widget, code-block and copy-exclude chrome skipped, notice exclusion narrowed to answer content, key-form migration guard on Resume. 15 new tests incl. a captured-structure fixture with a fake DOM, and an E2E run on that structure in Chromium. | [VERIFIED] in tests below; live M3-L0 repeat pending. | `npm run check` PASS (192 tests); `npm run e2e` PASS. |
 | 2026-11-10 | Live M3-L0 PASS (owner, after #29): exactly one answer-content element and a uuid-based response key on the live page. Recorded without the owner's conversation and message ids. M3-L1 to L6 written up as exact steps with copy-paste prompts. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
+| 2026-11-10 | Run 6 (owner): M1 S1–S2 after #29 PASS. Behavioural evidence (user-reported): worked, no issues; max 3, marker off, continuation prompt `hey`. No per-answer diagnostics recorded. M3 reassessed: code, tests, docs and M3-L0 are done; **M3-L1 to L6 have not been run**, so M3 is **not complete**. | [VERIFIED] owner report (behavioural). | Documentation only; `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **Owner:** M3-L1 to M3-L6 (`docs/LIVE_VALIDATION.md` → "How to run M3-L1 to M3-L6"), then an M1 regression run of S1–S2 (Run 6).
-- **Cloud, when results arrive:** record them, fix any failure with a test, then reassess M3 against its definition of done.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for M3-L1 to L6 and S1–S2.
+- **M3 is not complete.** Its live definition-of-done item needs M3-L1 to M3-L6. None of them has been run; only M3-L0 (passed) and the M1 regression (passed) have. These are first runs, not repeats.
+- **Owner:** M3-L1 to M3-L6, following `docs/LIVE_VALIDATION.md` → "How to run M3-L1 to M3-L6". M3-L3, L4 and L5 carry the most weight: they are the only live evidence that a marker stops or pauses, and that a marker inside a code widget is ignored on the real page.
+- **Cloud, when results arrive:** record them, fix any failure with a test, then mark M3 complete if every row passes.
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for M3-L1 to L6.
 
 ## 13. Update protocol
 
