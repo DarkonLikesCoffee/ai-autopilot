@@ -480,6 +480,19 @@ unpacked extension. Either way, the delay is driven by the worker timer and a
 page ping, and the alarm is only a fallback (`test/controller.test.ts`: "with
 the alarm never firing …"). These rows check the real install.
 
+## Page check (M5 C-8, owner, one observation)
+
+The panel's *Page* line counts a missing Send button as a problem only while
+the message box has text, because it is not established whether ChatGPT shows
+the Send button for an empty box (it may show a voice button instead).
+
+| # | Steps | Record |
+|---|---|---|
+| PC-L1 | Open a ChatGPT conversation with an **empty** message box; open the Autopilot panel and read the *Page* line | Whether it says "Send button" or "The Send button is checked once the message box has text." Then type one letter (do not send) and record the line again; delete the letter afterwards |
+
+If PC-L1 shows the Send button with an empty box, the empty-box exception can
+be removed.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

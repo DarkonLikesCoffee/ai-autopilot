@@ -7,7 +7,7 @@ import { testSettings } from './helpers/fixtures.ts';
 
 const tab = { tabId: 1, title: 'Build the app', conversation: '/c/abc' };
 function snap(session: Partial<UiSnapshot['session']>, extra: Partial<UiSnapshot> = {}): UiSnapshot {
-  return { settings: testSettings({ maxCycles: 10 }), session: { ...initialSession(), ...session }, sessionTab: null, activeTab: tab, activeTabConnected: true, gettingStarted: false, now: 1000, ...extra };
+  return { settings: testSettings({ maxCycles: 10 }), session: { ...initialSession(), ...session }, sessionTab: null, activeTab: tab, activeTabConnected: true, page: null, gettingStarted: false, now: 1000, ...extra };
 }
 
 test('each state maps to its label and controls', () => {

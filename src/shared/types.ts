@@ -63,6 +63,11 @@ export interface PageSignals {
   statusMarker: StatusMarker;
   /** M3: how many visible answer-content elements the latest answer has (structure only). */
   answerContentElements: number;
+  /**
+   * M5 C-8: the page's interface language, from the `lang` attribute of the
+   * document (for example "en-US"); null when absent or not a language tag.
+   */
+  interfaceLanguage: string | null;
 }
 
 /**

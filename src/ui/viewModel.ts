@@ -35,6 +35,8 @@ export interface PanelView {
   countdown: string;
   lastContinuation: string;
   lastError: string;
+  /** M5 C-8: what Autopilot recognizes on the ChatGPT page, and whether something is missing. */
+  page: { text: string; recognized: boolean } | null;
   /** After a halt: "Resume when ready" / "Fix first" / "Finished" and one line on what to do; null otherwise. */
   guidance: { label: string; kind: HaltKind; action: string } | null;
 }
@@ -77,6 +79,28 @@ const TONE: Record<StatusKey, Tone> = {
   paused: 'warning',
   error: 'danger',
 };
+
+/**
+ * The Page line (M5 C-8), from structure signals only. The Send button counts as
+ * missing only while the message box has text: whether ChatGPT shows it for an
+ * empty box is not established live (docs/LIVE_VALIDATION.md, PC-L1), so an
+ * empty box never raises a warning.
+ */
+export function pageCheck(page: UiSnapshot['page']): PanelView['page'] {
+  if (!page) return null;
+  const missing: string[] = [];
+  if (!page.composerFound) missing.push('message box not found');
+  const button = page.stopControlFound ? 'Stop button' : page.sendControlFound ? 'Send button' : null;
+  if (!button && page.composerFound && page.composerHasText) missing.push('Send button not found');
+  if (missing.length) {
+    return { recognized: false, text: `This ChatGPT page is not fully recognized (${missing.join(', ')}). Copy the diagnostic report from Activity when you report it.` };
+  }
+  const answers = page.assistantMessageCount === 0 ? 'no answers yet' : page.assistantMessageCount === 1 ? '1 answer' : `${page.assistantMessageCount} answers`;
+  const parts = ['message box', ...(button ? [button] : []), answers];
+  const language = page.interfaceLanguage ? `language ${page.interfaceLanguage}` : 'language not set';
+  const later = button ? '' : ' The Send button is checked once the message box has text.';
+  return { recognized: true, text: `Recognized: ${parts.join(', ')}; ${language}.${later}` };
+}
 
 /** @param now the current time on the background's clock */
 export function buildView(snapshot: UiSnapshot, now: number): PanelView {
@@ -133,6 +157,7 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
     countdown,
     lastContinuation: formatClock(session.lastContinuationAt),
     lastError: halted && reasonDetail ? reasonDetail : '—',
+    page: pageCheck(snapshot.page),
     guidance: guidanceFor(session),
   };
 }

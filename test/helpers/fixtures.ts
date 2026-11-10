@@ -71,6 +71,7 @@ export function signals(overrides: Partial<PageSignals> = {}): PageSignals {
     unrecognizedNoticeFound: false,
     statusMarker: 'none',
     answerContentElements: 0,
+    interfaceLanguage: 'en',
     ...overrides,
   };
 }
