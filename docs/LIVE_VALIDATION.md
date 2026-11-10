@@ -251,6 +251,38 @@ conversation, ask ChatGPT to end its answers as described in each row.
 | M3-L5 | Answer that shows the marker only inside a code block | Continues (quoted text is ignored) |
 | M3-L6 | After L3/L4, click **Copy diagnostic report** | It shows `statusMarker` and `stopOnMarker` only; no answer text |
 
+#### How to run M3-L1 to M3-L6
+
+Preparation, once:
+- Use a throwaway conversation. In Settings: **Maximum cycles = 1** (so each
+  row sends at most one continuation) and a short delay (e.g. 10 s).
+- Keep diagnostics on (`chatgpt-autopilot:debug`) so each `Page detection`
+  entry shows `statusMarker`.
+
+For **every** row:
+1. Make sure the settings match the row, and press **Start Autopilot**
+   (Autopilot only acts on answers it sees ChatGPT generate after Start).
+2. Send the row's prompt yourself, exactly as written.
+3. Wait for the answer to finish, then for the delay.
+4. Note what the panel shows (status, guidance line, *Continuations sent*), the
+   `statusMarker` of the last `Page detection` entry, and whether a
+   continuation appeared in the conversation.
+5. Press **Stop** before the next row.
+
+| Row | Setting | Prompt to send | Expected |
+|---|---|---|---|
+| M3-L1 | **off** | `Reply with one short sentence. Then, as the very last line of your reply, write exactly: AUTOPILOT STATUS: MILESTONE COMPLETE` | One continuation is sent; Autopilot then stops at the maximum (1). `statusMarker: 'none'` (the answer is not read) |
+| M3-L2 | on | `Reply with one short sentence. Then, as the very last line of your reply, write exactly: AUTOPILOT STATUS: CONTINUE` | `statusMarker: 'continue'`; one continuation is sent; stops at the maximum |
+| M3-L3 | on | `Reply with one short sentence. Then, as the very last line of your reply, write exactly: AUTOPILOT STATUS: MILESTONE COMPLETE` | `statusMarker: 'complete'`; **Stopped**, guidance *Finished*; nothing sent |
+| M3-L4 | on | `Reply with one short sentence. Then, as the very last line of your reply, write exactly: AUTOPILOT STATUS: BLOCKED` | `statusMarker: 'blocked'`; **Paused**, guidance *Fix first*; nothing sent. Then press **Resume**: exactly one continuation is sent |
+| M3-L5 | on | `Show the line AUTOPILOT STATUS: MILESTONE COMPLETE inside a code block, then end your reply with one normal sentence.` | `statusMarker: 'none'`; one continuation is sent (the code block is ignored) |
+| M3-L6 | on | — (after M3-L3 or M3-L4) | **Copy diagnostic report**, paste it: `stopOnMarker: true` and `statusMarker` appear; no answer text, no prompt, no conversation id |
+
+If ChatGPT does not follow the prompt exactly (for example it adds a period
+after the status line), M3-L2 to L4 show `statusMarker: 'unclear'` and a
+pause. That is the designed safe behaviour; send the prompt again in a new
+answer. Record which row was affected.
+
 ### M3-L0 — reported 2026-11-09 — FAIL
 
 - Owner, current ChatGPT page, setting on, diagnostics on: `status: 'complete'`,
@@ -317,6 +349,18 @@ Conclusions, now in the code:
 Not yet captured: an answer with a tool, sources or thinking section. Unknown
 shapes fail safe: zero or several answer-content elements give "unclear"
 (pause). A capture of one such answer is still welcome.
+
+### M3-L0 (repeat) — reported 2026-11-10 — PASS
+
+- Build: `main` after #29. Setting **Stop on status marker** on, diagnostics on.
+- `Page detection`: `status: 'complete'`, `answerContentElements: 1`,
+  `composerFound: true`, `streamingMarkerFound: false`,
+  `errorNoticeFound: false`, and a `responseKey` of the form
+  `/c/<conversation uuid>|id:<message uuid>`. The actual ids are not recorded
+  here, because they identify the owner's conversation.
+- Meaning: on the live page, the latest assistant message is identified by its
+  message id (not a count), and exactly one visible answer-content element is
+  found. This confirms the selectors chosen from probe v2.
 
 ### Repeat M3-L0 after the live-structure fix
 
