@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const outdir = `${root}dist`;
 const watch = process.argv.includes('--watch');
+// --release: no source maps (npm run package).
+const release = process.argv.includes('--release');
 
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
@@ -23,7 +25,7 @@ const options = {
   // Content scripts cannot be ES modules; IIFE works for every context.
   format: 'iife',
   target: 'chrome116',
-  sourcemap: 'linked',
+  sourcemap: release ? false : 'linked',
   logLevel: 'info',
   legalComments: 'none',
 };

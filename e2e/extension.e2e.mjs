@@ -21,7 +21,8 @@ import { assistantTurn, codeBlock, FIXTURE_CSS, paragraph, toHtml } from '../tes
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
-const extensionDir = fileURLToPath(new URL('../dist', import.meta.url));
+// EXTENSION_DIR: run against another build, e.g. the unzipped release ZIP (CI does this).
+const extensionDir = process.env.EXTENSION_DIR ?? fileURLToPath(new URL('../dist', import.meta.url));
 const profile = mkdtempSync(join(tmpdir(), 'autopilot-e2e-'));
 const PROMPT = 'E2E: continue working per AUTOPILOT.md.';
 

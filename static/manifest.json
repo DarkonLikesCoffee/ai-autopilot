@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Autopilot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Automatically sends a continuation prompt each time ChatGPT finishes a response, until you pause or stop it.",
   "minimum_chrome_version": "116",
   "permissions": [
