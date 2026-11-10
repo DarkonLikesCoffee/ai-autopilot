@@ -172,6 +172,57 @@ try {
   check('20: settings persist (saved through the UI, still there after reloading the panel)',
     (await panel.inputValue('#s-prompt')) === PROMPT && (await panel.inputValue('#s-delay')) === '1' && (await panel.inputValue('#s-max')) === '3');
 
+  // ---- M5 C-6: field messages, unsaved changes, Reset asks first ----
+  const storedSettings = () => worker.evaluate(async () => (await chrome.storage.local.get('autopilot.settings.v2'))['autopilot.settings.v2']);
+  const fieldState = (id) => panel.$eval(`#${id}`, (el) => {
+    const message = document.getElementById(`${el.id}-error`);
+    return { invalid: el.getAttribute('aria-invalid'), describedBy: el.getAttribute('aria-describedby'), message: message.hidden ? '' : message.textContent, focused: document.activeElement === el };
+  });
+  const unsavedShown = () => panel.$eval('#settings-unsaved', (el) => !el.hidden);
+  if (!(await panel.$eval('#settings', (d) => d.open))) await panel.click('#settings summary');
+  check('C-6: no unsaved changes right after loading', !(await unsavedShown()));
+  await panel.fill('#s-delay', '0');
+  check('C-6: an edit shows "Unsaved changes"', await unsavedShown());
+  await panel.click('#btn-save');
+  const badDelay = await fieldState('s-delay');
+  check('C-6: an invalid field is marked and described in place, and focused',
+    badDelay.invalid === 'true' && badDelay.describedBy === 's-delay-error' && /from 1 to 3600/.test(badDelay.message) && badDelay.focused, JSON.stringify(badDelay));
+  const otherField = await fieldState('s-confirm');
+  check('C-6: valid fields are not marked', otherField.invalid === null && otherField.message === '');
+  check('C-6: nothing is saved while a field is invalid', (await storedSettings()).delaySeconds === 1 && /Nothing was saved/.test(await panel.textContent('#banner')));
+  await panel.fill('#s-delay', '2');
+  const fixedDelay = await fieldState('s-delay');
+  check('C-6: the message clears as soon as the field is valid', fixedDelay.invalid === null && fixedDelay.describedBy === null && fixedDelay.message === '');
+  await panel.fill('#s-delay', '1');
+  await sleep(300); // a refresh arrives meanwhile: the form keeps what was typed
+  check('C-6: typing the saved value back clears "Unsaved changes"', !(await unsavedShown()));
+  await panel.fill('#s-max', '4');
+  await sleep(1300); // more than one refresh
+  check('C-6: a refresh keeps the edited form', (await panel.inputValue('#s-max')) === '4' && (await unsavedShown()));
+  await panel.fill('#s-max', '3');
+
+  await panel.click('#btn-reset');
+  const confirmText = await panel.textContent('#reset-confirm');
+  check('C-6: Reset asks first, naming both the settings and the continuation prompt',
+    await panel.$eval('#reset-confirm', (el) => !el.hidden) && /Reset all settings and the continuation prompt/.test(confirmText)
+    && await panel.evaluate(() => document.activeElement?.id === 'btn-reset-cancel') && (await storedSettings()).prompt === PROMPT);
+  await panel.keyboard.press('Escape');
+  check('C-6: Escape cancels the reset; nothing changes and focus returns to Reset',
+    await panel.$eval('#reset-confirm', (el) => el.hidden) && await panel.evaluate(() => document.activeElement?.id === 'btn-reset') && (await storedSettings()).prompt === PROMPT);
+  await panel.click('#btn-reset');
+  await panel.click('#btn-reset-confirm');
+  await panel.waitForFunction(() => document.getElementById('banner').textContent.includes('including the continuation prompt'));
+  const reset = await storedSettings();
+  check('C-6: confirming resets the settings and the prompt', reset.prompt !== PROMPT && reset.delaySeconds === 10 && (await panel.inputValue('#s-delay')) === '10');
+  // Back to the settings the rest of the run uses.
+  await panel.fill('#s-prompt', PROMPT);
+  await panel.fill('#s-delay', '1');
+  await panel.fill('#s-confirm', '1');
+  await panel.fill('#s-max', '3');
+  await panel.click('#btn-save');
+  await panel.waitForFunction(() => document.getElementById('banner').textContent.includes('Settings saved'));
+  check('C-6: saving clears "Unsaved changes"', !(await unsavedShown()) && (await storedSettings()).delaySeconds === 1);
+
   async function openConversation(path) {
     const page = await context.newPage();
     await page.goto(`https://chatgpt.com${path}`);
