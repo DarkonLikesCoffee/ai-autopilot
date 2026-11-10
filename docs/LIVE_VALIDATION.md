@@ -362,6 +362,34 @@ shapes fail safe: zero or several answer-content elements give "unclear"
   message id (not a count), and exactly one visible answer-content element is
   found. This confirms the selectors chosen from probe v2.
 
+### M3-L1 to M3-L6 — reported 2026-11-10 — PASS
+
+Build: `main` after #29 (exact commit not stated); interface language not
+stated. Owner report, as given. **Behavioural** = what the owner observed
+Autopilot do. **Diagnostic** = a value the owner read from `Page detection`
+or the diagnostic report. Values the owner did not give are marked
+*not supplied*; none is inferred.
+
+| Row | Behavioural evidence | Diagnostic evidence | Result |
+|---|---|---|---|
+| M3-L1 | Setting **off**: the answer ended in `AUTOPILOT STATUS: MILESTONE COMPLETE` and Autopilot **continued**. Setting **on**: Autopilot **stopped** | *not supplied* (no `statusMarker` value) | PASS (behavioural) |
+| M3-L2 | Exactly one continuation sent; stopped at the maximum | `statusMarker: continue` | PASS |
+| M3-L3 | No continuation sent | Diagnostic report: `statusMarker: complete`, `reason: marker_complete`, `guidance: finished` | PASS |
+| M3-L4 | Paused; *Fix first* guidance; zero continuations before Resume; after Resume exactly one continuation, without pausing again immediately | *not supplied* (no `statusMarker` or `reason` value) | PASS (behavioural) |
+| M3-L5 | Exactly one continuation sent; stopped at the maximum | `statusMarker: none` | PASS |
+| M3-L6 | The full diagnostic report was inspected | The report contained no answer text, no prompt text, no conversation id and no message id; only technical metadata and status enums | PASS |
+
+Notes on what each row does and does not show:
+- **L1:** shows that with the setting off a marker line does not stop
+  Autopilot. That the answer is not read at all is established by tests (zero
+  text reads), not by this row.
+- **L4:** shows the full BLOCKED flow. Without the diagnostic value, the
+  behaviour alone does not distinguish `blocked` from `unclear`: both pause
+  with *Fix first*, and Resume overrides both once. L2, L3 and L5 show that
+  the exact-line comparison yields the exact values on the live page.
+- **L5:** the code block is a widget on the live page, not `pre`/`code` (probe
+  v2), so this row confirms the widget exclusion from #29 live.
+
 ### Run 6 — reported 2026-11-10 — PASS (M1 regression after #29)
 
 Purpose: #29 changed how responses are identified on the live page (the

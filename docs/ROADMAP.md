@@ -40,7 +40,9 @@ Potential work:
 
 Do not add telemetry or a remote backend just to obtain diagnostics.
 
-## M3 — Explicit stopping and control protocol (P1) — needs an owner decision
+## M3 — Explicit stopping and control protocol (P1) — complete 2026-11-10
+
+Delivered as the opt-in "Stop on status marker" (design: `docs/design/m3-stop-protocol.md`), validated live (M3-L0 to L6). The historical notes below are kept for context.
 
 Prerequisite decision: recognizing a status marker means reading the text of ChatGPT's latest answer, which the current privacy principle rules out. The owner decides whether and how narrowly to allow it (for example: only the last answer, only an exact marker on its own line, never stored or sent).
 

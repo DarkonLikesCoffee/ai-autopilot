@@ -159,9 +159,17 @@ Why now (evidence from M1): every live investigation (runs 1–5) needed the own
 - [x] **Checks:** [VERIFIED] `npm run check` (149 tests) and `npm run e2e` pass, covering the export and the guidance.
 - [x] **Live:** [VERIFIED] owner, 2026-11-06: the pause guidance made sense, and an exported diagnostic report contained no conversation text (`docs/LIVE_VALIDATION.md`, M2 live check).
 
-## 5c. Current milestone: M3 — Stop on an explicit status marker
+## 5c. Milestone M3 — Stop on an explicit status marker — **COMPLETE (2026-11-10)**
 
 Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** with decisions (a)–(d), plus R9 (visible answer content only; if it cannot be isolated, `unclear`) and R10 (answer text never persisted, transmitted, logged or retained in application state).
+
+**Status:** [VERIFIED] **Complete.** Final reassessment 2026-11-10: every definition-of-done item below has evidence, and the live item has all seven rows passed.
+
+**Accepted residual gaps** (not blockers; documented):
+- **M3-L4** has behavioural evidence only. It does not show diagnostically that the live value was `blocked` rather than `unclear`. Both pause with *Fix first* and are overridden once by Resume, so the user-visible requirement (BLOCKED pauses, nothing sent, Resume sends exactly one) is met. The exact comparison yielding exact values live is shown by L2, L3 and L5.
+- **M3-L1** has behavioural evidence only. "Not read when off" rests on tests (zero text reads), which is the right kind of evidence for something that has no visible effect.
+- **Tool, sources and thinking sections** were never captured live. They fail safe (zero or several answer-content elements → `unclear`, pause), as tested on synthetic shapes.
+- **The unit selector** depends on the observed `:assistant` suffix of `data-content-search-unit-key`. If ChatGPT changes it, the heading fallback applies: count keys, and M3 pauses as `unclear`.
 
 ### Definition of done (M3)
 
@@ -170,17 +178,17 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 - [x] **Behaviour**: [VERIFIED] T7 part 2. The setting is off by default (older stored settings stay off). COMPLETE stops (*Finished*); BLOCKED and unclear pause (*Fix first*); missing or CONTINUE continue. The marker is checked again in the background precheck and in the page's own precheck. **Resume after a marker pause is your override for that one response** (it is continued once; later answers are checked again).
 - [x] **Docs**: [VERIFIED] T7 part 3. README privacy wording (R10) and a "Stop on status marker" section; the exception added to principle 10 (section 3), section 2 and `CLAUDE.md`; the template now states the exact last-line rule; live rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`.
 - [x] **Checks**: [VERIFIED] `npm run check` (176 tests); `npm run e2e` incl. three M3 scenarios (code-block marker ignored, then COMPLETE stops with *Finished*; BLOCKED pauses and Resume overrides once; setting off ignores the line).
-- [ ] **Live** (owner): rows M3-L0 to M3-L6 in `docs/LIVE_VALIDATION.md`. Status per row (2026-11-10):
+- [x] **Live** (owner): rows M3-L0 to M3-L6, all **PASS**, reported 2026-11-10 (`docs/LIVE_VALIDATION.md`). B = behavioural (observed), D = diagnostic (a value read from `Page detection` or the report).
 
   | Row | What it proves | Evidence | Status |
   |---|---|---|---|
-  | M3-L0 | The live answer content and message id are isolated | Diagnostic (owner): `answerContentElements: 1`, `id:<uuid>` key | **PASS** |
-  | M3-L1 | With the setting off, a marker line is ignored | none yet. Run 6 ran with the setting off, but its answers had no marker line, so it does not show that a marker is ignored | NOT RUN |
-  | M3-L2 | CONTINUE continues | none yet | NOT RUN |
-  | M3-L3 | MILESTONE COMPLETE stops (*Finished*), nothing sent | none yet | NOT RUN |
-  | M3-L4 | BLOCKED pauses; Resume sends exactly one | none yet | NOT RUN |
-  | M3-L5 | A marker inside a code block is ignored on the live page (code is a widget there, not `pre`/`code`) | none yet | NOT RUN |
-  | M3-L6 | The diagnostic report shows the marker result but no answer text, after a marker run | none yet. The M2 report check (2026-11-06) predates M3 | NOT RUN |
+  | M3-L0 | Live answer content and message id are isolated | D: `answerContentElements: 1`, `id:<uuid>` key | **PASS** |
+  | M3-L1 | Setting off: a marker line does not stop Autopilot | B: off → continued; on → stopped. D: not supplied | **PASS** (B) |
+  | M3-L2 | CONTINUE continues | D: `statusMarker: continue`. B: one continuation, stopped at the maximum | **PASS** |
+  | M3-L3 | MILESTONE COMPLETE stops, nothing sent | D: `statusMarker: complete`, `reason: marker_complete`, `guidance: finished`. B: nothing sent | **PASS** |
+  | M3-L4 | BLOCKED pauses; Resume sends exactly one | B: paused, *Fix first*, zero before Resume, exactly one after, no immediate re-pause. D: not supplied | **PASS** (B) |
+  | M3-L5 | A marker in a code block (a widget on the live page) is ignored | D: `statusMarker: none`. B: one continuation, stopped at the maximum | **PASS** |
+  | M3-L6 | The report holds no answer text after a marker run | D: report inspected; no answer text, prompt, conversation id or message id | **PASS** |
 
   M1 regression after #29 (R6): **PASS**, behavioural and user-reported (see the matrix).
 
@@ -190,7 +198,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 
 1. ~~**P0 — M1 reliability**~~ — **complete 2026-11-05.**
 2. ~~**P1 — M2 recovery and observability**~~: **complete 2026-11-06** (T10, T11, live check).
-3. **P1 — M3 stopping and control (current).** Design approved 2026-11-06; see section 5c.
+3. ~~**P1 — M3 stopping and control**~~: **complete 2026-11-10** (section 5c).
 4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
 5. **P3 — M5 product polish:** onboarding, settings UX, accessibility, packaging and release process.
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
@@ -205,7 +213,7 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T4 (P0): Hidden/background tab behavior.** Done 2026-11-05: wall-clock bounds on the send step (#8); live S5/S6 passed (runs 3–4). Real frozen or discarded tabs were not observed; the bounds remain the safeguard.
 - [x] **T5 (P1): Diagnostics.** Done 2026-11-04. Audit of the activity log against the five stages: confirmed completion + scheduled continuation ("Response complete. Continuation N in Xs."), submission attempt ("Sending continuation N."), confirmed submission ("Continuation N sent.") were logged; **generation observed was never logged**, so a stalled run could not show whether ChatGPT was ever seen working. Added "ChatGPT is generating a response." once per response. A completion detected but not yet confirmed exists only in the content script (the panel shows the live ChatGPT state; the opt-in console diagnostics show it in detail); not added to the log, to avoid a new message type for a transient state. Test: a full cycle logs each stage once, in order. No conversation text in any message.
 - [x] **T6 (P1): Session recovery.** Done 2026-11-04. Audited restart × phase: browser restart (all phases) and a worker restart during the delay were already handled and tested. **Fixed:** a worker restart *during an attempt* that woke within 60 s scheduled nothing; if the tab's result report never arrived (tab crashed or discarded), the session stayed "Running" in `submitting` forever. WAKE now schedules a check for when the result is overdue; DUE then pauses as uncertain (the response stays answered; a late result is still applied). Schema-version changes (extension update) were already safe (restored as stopped, answered keys kept); now pinned by a test.
-- [x] **T7 (P1, M3): Structured stop protocol.** Implemented 2026-11-06 in #24 (reader), #25 (wiring) and part 3 (E2E, docs). Live validation (M3-L0 to L6) pending. Status text is not proof that the work itself is correct.
+- [x] **T7 (P1, M3): Structured stop protocol.** Implemented 2026-11-06 in #24 (reader), #25 (wiring) and #26 (E2E, docs); live fixes #27–#29; live validation M3-L0 to L6 passed 2026-11-10. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
 - [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
 - [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
@@ -297,13 +305,17 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-10 | Live message identification and answer isolation fixed from probe v2 evidence (see section 9): unit first, id-based keys, `[data-markdown-text-style="assistant-message"]`, widget, code-block and copy-exclude chrome skipped, notice exclusion narrowed to answer content, key-form migration guard on Resume. 15 new tests incl. a captured-structure fixture with a fake DOM, and an E2E run on that structure in Chromium. | [VERIFIED] in tests below; live M3-L0 repeat pending. | `npm run check` PASS (192 tests); `npm run e2e` PASS. |
 | 2026-11-10 | Live M3-L0 PASS (owner, after #29): exactly one answer-content element and a uuid-based response key on the live page. Recorded without the owner's conversation and message ids. M3-L1 to L6 written up as exact steps with copy-paste prompts. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-10 | Run 6 (owner): M1 S1–S2 after #29 PASS. Behavioural evidence (user-reported): worked, no issues; max 3, marker off, continuation prompt `hey`. No per-answer diagnostics recorded. M3 reassessed: code, tests, docs and M3-L0 are done; **M3-L1 to L6 have not been run**, so M3 is **not complete**. | [VERIFIED] owner report (behavioural). | Documentation only; `npm run check` PASS. |
+| 2026-11-10 | Owner reported M3-L1 to L6, all PASS (recorded with behavioural and diagnostic evidence separated; no diagnostic value inferred; L1 and L4 behavioural only). Until this report the record had only M3-L0 and Run 6, so #31 marked L1–L6 NOT RUN. **M3 marked complete** after a final reassessment, with the residual gaps listed in section 5c. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **M3 is not complete.** Its live definition-of-done item needs M3-L1 to M3-L6. None of them has been run; only M3-L0 (passed) and the M1 regression (passed) have. These are first runs, not repeats.
-- **Owner:** M3-L1 to M3-L6, following `docs/LIVE_VALIDATION.md` → "How to run M3-L1 to M3-L6". M3-L3, L4 and L5 carry the most weight: they are the only live evidence that a marker stops or pauses, and that a marker inside a code widget is ignored on the real page.
-- **Cloud, when results arrive:** record them, fix any failure with a test, then mark M3 complete if every row passes.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for M3-L1 to L6.
+M1, M2 and M3 are complete. What is left on the roadmap needs an owner decision:
+
+- **M4: multiple independent sessions (P2).** Cloud work would start with a design proposal only (T8): session identity, per-session settings, isolation of timers and answered keys, races between tabs. No implementation before the owner approves it.
+- **M5: UX, onboarding and release quality (P3).** For example first-run onboarding, settings validation, packaging and release notes.
+- **Optional, any time:** probe output for an answer with a tool, sources or thinking section, to replace the synthetic fail-safe tests with captured ones.
+
+- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for the owner to choose the next milestone.
 
 ## 13. Update protocol
 
