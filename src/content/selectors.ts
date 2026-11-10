@@ -24,8 +24,12 @@ export interface SelectorConfig {
   userMessage: string[];
   /** Controls shown when ChatGPT wants you to log in. */
   loginControl: string[];
-  /** Attribute holding a stable id on assistant messages. */
-  messageIdAttribute: string;
+  /**
+   * Attributes holding a stable id on (or inside) an assistant message, tried in
+   * order. The id makes the response key independent of how many turns ChatGPT
+   * happens to render.
+   */
+  messageIdAttributes: string[];
   /** Regions where ChatGPT shows errors and limit notices. Text inside conversation messages is excluded. */
   noticeRegion: string[];
   /**
@@ -38,8 +42,9 @@ export interface SelectorConfig {
    * The rendered answer content inside an assistant message (M3 status marker;
    * R9). The marker is read only if exactly one visible element matches inside
    * the latest answer; otherwise the result is "unclear" and nothing is read.
-   * [UNVERIFIED] `.markdown` has not been observed live in this project
-   * (live row M3-L0); if it is wrong, the feature pauses and never guesses.
+   * Live (probe v2, 2026-11-09): div[data-markdown-text-style="assistant-message"]
+   * holds the rendered answer. `.markdown` (the earlier, unverified guess) does
+   * not exist on the live page (M3-L0 FAIL) and is no longer used.
    */
   answerContent: string[];
   /** Any element matching this is a conversation message; notices inside it are ignored. */
@@ -76,10 +81,17 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
   stopControl: ['button[data-testid="stop-button"]', ...labelSelectors('stop')],
   sendControl: ['button[data-testid="send-button"]', '#composer-submit-button', ...labelSelectors('send')],
   streamingMarker: ['[data-talvt-turn-state="in_progress"]', '.result-streaming', '[data-testid="streaming-indicator"]'],
-  assistantMessage: ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
+  // Live structure (probe v2, owner, 2026-11-09): each assistant turn is a unit
+  // div[data-content-search-unit-key="<turn>:<n>:assistant"] holding a visually
+  // hidden heading h4.sr-only[data-conversation-role="assistant"] and the message.
+  // The unit comes first; the heading alone is not the message (it was matched
+  // before, so the message's id and answer content were never found).
+  assistantMessage: ['[data-content-search-unit-key$=":assistant"]', '[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'],
   userMessage: ['[data-user-message-bubble]', '[data-conversation-role="user"]', '[data-message-author-role="user"]'],
   loginControl: ['button[data-testid="login-button"]', 'a[href*="/auth/login"]'],
-  messageIdAttribute: 'data-message-id',
+  // Live: the message carries data-chatgpt-selection-message-id and its rendered
+  // response data-dil-message-id (the same uuid); data-message-id is the older markup.
+  messageIdAttributes: ['data-message-id', 'data-chatgpt-selection-message-id', 'data-dil-message-id'],
   noticeRegion: [
     '[role="alert"]',
     '[role="status"]',
@@ -90,8 +102,10 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
     '[class*="border-token-surface-error"]',
   ],
   alertRegion: ['[role="alert"]', '.text-token-text-error', '[class*="border-token-surface-error"]', '[data-testid*="error"]'],
-  answerContent: ['.markdown'],
-  messageContainer: '[data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
+  answerContent: ['[data-markdown-text-style="assistant-message"]'],
+  // The answer content itself is conversation text (never a notice); the rest of a live
+  // assistant unit is not excluded, so an error ChatGPT shows inside the turn is still detected.
+  messageContainer: '[data-markdown-text-style], [data-conversation-role], [data-message-author-role], [data-user-message-bubble]',
 };
 
 // Patterns are matched against short notice texts only; the text is discarded right away.

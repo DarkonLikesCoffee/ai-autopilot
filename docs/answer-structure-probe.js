@@ -12,9 +12,9 @@
 // values are shown only when they look like identifier tokens (letters, digits,
 // - _ : .), otherwise as "<omitted>".
 (() => {
-  const ASSISTANT = ['[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'];
+  const ASSISTANT = ['[data-content-search-unit-key$=":assistant"]', '[data-conversation-role="assistant"]', '[data-message-author-role="assistant"]'];
   // Structural candidates to locate, not to adopt: every match is reported so the choice rests on evidence.
-  const CANDIDATES = [...ASSISTANT, '[data-message-id]', '[data-message-author-role]', '[data-conversation-role]', '[data-testid^="conversation-turn"]', 'article'];
+  const CANDIDATES = [...ASSISTANT, '[data-markdown-text-style="assistant-message"]', '[data-chatgpt-selection-message-id]', '[data-message-id]', '[data-message-author-role]', '[data-conversation-role]', '[data-testid^="conversation-turn"]', 'article'];
   const MAX_NODES = 300, MAX_DEPTH = 14, MAX_UP = 8;
   const token = (v) => (typeof v === 'string' && /^[\w:.\-]{1,60}$/.test(v) ? v : v == null ? null : '<omitted>');
   const visible = (el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : null);

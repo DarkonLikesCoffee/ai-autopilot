@@ -35,7 +35,8 @@ function el(tag: string, attrs: Record<string, string> = {}, children: (N | stri
     closest: () => null,
     querySelectorAll(selector: string) {
       const out: N[] = [];
-      const walk = (n: N) => { for (const c of n.childNodes ?? []) { if (selector.startsWith('.') && c.classes?.includes(selector.slice(1))) out.push(c); walk(c); } };
+      const attr = selector.match(/^\[([\w-]+)="([^"]*)"\]$/);
+      const walk = (n: N) => { for (const c of n.childNodes ?? []) { if (attr && c.attrs?.[attr[1]!] === attr[2]) out.push(c); walk(c); } };
       walk(node);
       return out;
     },
@@ -43,7 +44,7 @@ function el(tag: string, attrs: Record<string, string> = {}, children: (N | stri
   return node;
 }
 const answerEl = (id: string, ...lines: string[]) =>
-  el('div', { 'data-message-author-role': 'assistant', 'data-message-id': id }, [el('div', { class: 'markdown' }, lines.map((l) => el('p', {}, [l])))]);
+  el('div', { 'data-message-author-role': 'assistant', 'data-message-id': id }, [el('div', { 'data-markdown-text-style': 'assistant-message' }, lines.map((l) => el('p', {}, [l])))]);
 
 function page(answers: N[], opts: { generating?: boolean; users?: N[] } = {}): QueryRoot {
   const composer = { textContent: '', getAttribute: () => null, closest: () => null, checkVisibility: () => true };
@@ -52,6 +53,7 @@ function page(answers: N[], opts: { generating?: boolean; users?: N[] } = {}): Q
     querySelectorAll(selector: string) {
       if (selector === '#prompt-textarea') return [composer] as never;
       if (selector === '[data-message-author-role="assistant"]') return answers as never;
+      if (selector === '[data-content-search-unit-key$=":assistant"]' || selector === '[data-conversation-role="assistant"]') return [] as never;
       if (selector === '[data-message-author-role="user"]') return (opts.users ?? []) as never;
       if (selector === 'button[data-testid="stop-button"]' && opts.generating) return [stop] as never;
       return [] as never;
@@ -87,7 +89,7 @@ test('nothing is read while ChatGPT is generating', () => {
 test('only the latest answer counts: older answers and user messages with markers are ignored', () => {
   textReads = 0;
   const older = answerEl('m1', 'AUTOPILOT STATUS: MILESTONE COMPLETE');
-  const user = el('div', { 'data-message-author-role': 'user' }, [el('div', { class: 'markdown' }, [el('p', {}, ['AUTOPILOT STATUS: BLOCKED'])])]);
+  const user = el('div', { 'data-message-author-role': 'user' }, [el('div', { 'data-markdown-text-style': 'assistant-message' }, [el('p', {}, ['AUTOPILOT STATUS: BLOCKED'])])]);
   const latest = answerEl('m2', 'Next I will add the tests.');
   const o = observePage(page([older, latest], { users: [user] }), CONVO, DEFAULT_SELECTORS, ON);
   assert.equal(o.signals.statusMarker, 'none');

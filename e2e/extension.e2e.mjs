@@ -16,6 +16,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assistantTurn, codeBlock, FIXTURE_CSS, paragraph, toHtml } from '../test/fixtures/liveStructure.ts';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -279,7 +280,7 @@ try {
   await stop();
 
   // ---- M3: stop on an exact status marker (setting on) ----
-  const md = (...parts) => `<div class="markdown">${parts.join('')}</div>`;
+  const md = (...parts) => `<div data-markdown-text-style="assistant-message">${parts.join('')}</div>`;
   const COMPLETE = '<p>AUTOPILOT STATUS: MILESTONE COMPLETE</p>';
   await saveSettings(async () => { await panel.check('#s-stop-marker'); });
   const markerChat = await openConversation('/c/e2e-marker');
@@ -302,8 +303,8 @@ try {
   const probeOut = await markerChat.evaluate((src) => (0, eval)(src), probeSource);
   let probe = null;
   try { probe = JSON.parse(probeOut); } catch { /* checked below */ }
-  check('M3-L0 probe: shows the answer structure (the .markdown element) and no text at all',
-    !!probe && probe.version === 2 && probe.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0) &&
+  check('M3-L0 probe: shows the answer structure (the answer-content element) and no text at all',
+    !!probe && probe.version === 2 && probe.nodes.some((n) => n.data['data-markdown-text-style'] === 'assistant-message' && n.textLength > 0) &&
       !probeOut.includes('Example of the protocol') && !probeOut.includes('AUTOPILOT STATUS') && !probeOut.includes('Marker test') && !probeOut.includes(PROMPT),
     probe ? `nodes=${probe.nodesShown} selector=${probe.selectorUsed}` : String(probeOut).slice(0, 80));
 
@@ -315,7 +316,7 @@ try {
     '<article data-testid="conversation-turn-1"><div data-message-author-role="user" data-message-id="u1">USER-SECRET question</div></article>' +
     '<article data-testid="conversation-turn-2">' +
       '<h4 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)" data-conversation-role="assistant"><span>LABEL-SECRET</span></h4>' +
-      '<div data-message-author-role="assistant" data-message-id="m1"><div class="markdown"><p>ANSWER-SECRET text</p><p>AUTOPILOT STATUS: CONTINUE</p></div></div>' +
+      '<div data-message-author-role="assistant" data-message-id="m1"><div data-markdown-text-style="assistant-message"><p>ANSWER-SECRET text</p><p>AUTOPILOT STATUS: CONTINUE</p></div></div>' +
     '</article></main></body></html>' }));
   await layout.goto('https://chatgpt.com/c/e2e-probe-layout');
   const layoutOut = await layout.evaluate((src) => (0, eval)(src), probeSource);
@@ -323,8 +324,8 @@ try {
   try { lp = JSON.parse(layoutOut); } catch { /* checked below */ }
   const headingNode = lp?.nodes.find((n) => n.isExtensionMatch);
   check('M3-L0 probe v2: walks up from a hidden heading to its turn and shows the answer content there, without any text',
-    !!lp && lp.turnIsAncestorUp === 1 && headingNode?.tag === 'h4' && headingNode.box[0] <= 1 &&
-      lp.nodes.some((n) => n.classes.includes('markdown') && n.textLength > 0 && n.visible) &&
+    !!lp && headingNode?.tag === 'h4' && headingNode.box[0] <= 1 &&
+      lp.nodes.some((n) => n.data['data-markdown-text-style'] === 'assistant-message' && n.textLength > 0 && n.visible) &&
       lp.candidates.find((c) => c.selector === '[data-message-id]')?.count === 2 &&
       !/SECRET|AUTOPILOT STATUS/.test(layoutOut),
     lp ? `up=${lp.turnIsAncestorUp} nodes=${lp.nodesShown}` : String(layoutOut).slice(0, 80));
@@ -342,6 +343,60 @@ try {
   await waitFor('continuation after Resume', async () => (await messages(blockedChat)).length === 2, 30000);
   check('M3: BLOCKED pauses and nothing is sent; Resume continues that answer once', sentWhileBlocked === 1 && (await messages(blockedChat))[1] === PROMPT);
   await stop();
+
+  // 3b. The captured live structure (probe v2, 2026-11-09) in real Chromium: hidden h4 heading,
+  //     display:contents ancestors, code-block widgets, message ids on the message group.
+  const LIVE_ID_1 = 'a93353e3-acc2-42db-a7b5-7201c8c878cd';
+  const LIVE_ID_2 = 'b5ae7f10-1111-4222-8333-444455556666';
+  const liveAnswers = [
+    toHtml(assistantTurn(1, LIVE_ID_1, { blocks: [paragraph('An ordinary answer.'), codeBlock('AUTOPILOT STATUS: MILESTONE COMPLETE'), paragraph('Next I will add tests.')] })),
+    toHtml(assistantTurn(2, LIVE_ID_2, { blocks: [paragraph('All tasks are verified.'), paragraph('AUTOPILOT STATUS: MILESTONE COMPLETE')] })),
+  ];
+  const livePage = `<!doctype html><html lang="es-ES"><head><style>${FIXTURE_CSS}</style></head><body><main id="thread"></main>
+    <form id="f"><div id="prompt-textarea" contenteditable="true" role="textbox" style="min-height:40px"></div><span id="controls"></span></form>
+    <script>
+      window.__messages = [];
+      const answers = ${JSON.stringify(liveAnswers)};
+      const box = document.getElementById('prompt-textarea');
+      const controls = document.getElementById('controls');
+      const idle = () => { controls.innerHTML = '<button type="submit" aria-label="Enviar">Enviar</button>'; };
+      document.getElementById('f').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = box.innerText.trim();
+        if (!text) return;
+        window.__messages.push(text);
+        box.innerHTML = '';
+        const user = document.createElement('div');
+        user.innerHTML = '<h4 class="sr-only" data-conversation-role="user"><span>Tú dijiste:</span></h4>';
+        document.getElementById('thread').append(user);
+        controls.innerHTML = '<button type="button" data-testid="stop-button" aria-label="Detener">Detener</button>';
+        setTimeout(() => {
+          const next = answers.shift();
+          if (next) document.getElementById('thread').insertAdjacentHTML('beforeend', next);
+          idle();
+        }, 1500);
+      });
+      idle();
+    </script></body></html>`;
+  const liveChat = await context.newPage();
+  await liveChat.route('https://chatgpt.com/c/e2e-live-structure', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: livePage }));
+  await liveChat.goto('https://chatgpt.com/c/e2e-live-structure');
+  await liveChat.waitForSelector('button[aria-label="Enviar"]');
+  await liveChat.bringToFront();
+  await sleep(300);
+  await start(liveChat);
+  await liveChat.evaluate(() => { const b = document.getElementById('prompt-textarea'); b.focus(); document.execCommand('insertText', false, 'Hola'); });
+  await liveChat.click('button[aria-label="Enviar"]');
+  await waitFor('continuation on the live structure', async () => (await liveChat.evaluate(() => window.__messages.length)) === 2, 30000);
+  const afterFirst = await session();
+  await waitFor('stop on the live structure', async () => (await session()).reason === 'marker_complete', 30000);
+  await sleep(4000);
+  const liveMessages = await liveChat.evaluate(() => window.__messages.slice());
+  check('live structure in Chromium: the unit is the message, keys use its id, the code-widget marker is ignored, the final marker stops',
+    liveMessages.length === 2 && liveMessages[1] === PROMPT && afterFirst.answeredKeys.includes(`/c/e2e-live-structure|id:${LIVE_ID_1}`) &&
+      (await session()).run === 'stopped',
+    JSON.stringify({ sent: liveMessages.length, answered: afterFirst.answeredKeys.filter((k) => k.includes('e2e-live')) }));
+  await liveChat.close();
 
   // 4. With the setting off, the same line is not acted on.
   await saveSettings(async () => { await panel.uncheck('#s-stop-marker'); });

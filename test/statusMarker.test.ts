@@ -28,11 +28,11 @@ function el(tag: string, attrs: Record<string, string> = {}, children: (MarkerNo
     ...(opts.noVisibilityApi ? {} : { checkVisibility: () => opts.visible !== false }),
     getBoundingClientRect: () => opts.box ?? { width: 300, height: 20 },
     querySelectorAll(selector: string) {
-      const cls = selector.startsWith('.') ? selector.slice(1) : null;
+      const attr = selector.match(/^\[([\w-]+)="([^"]*)"\]$/);
       const all: MarkerNode[] = [];
       const walk = (n: MarkerNode) => {
         for (const c of Array.from(n.childNodes ?? [])) {
-          if ((c as { classes?: string[] }).classes?.includes(cls ?? '\u0000')) all.push(c);
+          if (attr && c.getAttribute?.(attr[1]!) === attr[2]) all.push(c);
           walk(c);
         }
       };
@@ -45,7 +45,7 @@ function el(tag: string, attrs: Record<string, string> = {}, children: (MarkerNo
 
 /** An assistant message whose answer content holds these blocks. */
 const answer = (...blocks: (MarkerNode | string)[]) =>
-  el('div', { 'data-message-author-role': 'assistant' }, [el('div', { class: 'markdown' }, blocks.map((b) => (typeof b === 'string' ? el('p', {}, [b]) : b)))]);
+  el('div', { 'data-message-author-role': 'assistant' }, [el('div', { 'data-markdown-text-style': 'assistant-message' }, blocks.map((b) => (typeof b === 'string' ? el('p', {}, [b]) : b)))]);
 
 const read = (message: MarkerNode) => readStatusMarker(message, SEL).marker;
 
@@ -132,16 +132,16 @@ test('if the answer content cannot be isolated, the result is unclear and no tex
   textReads = 0;
   const noContent = el('div', { 'data-message-author-role': 'assistant' }, [el('p', {}, ['AUTOPILOT STATUS: MILESTONE COMPLETE'])]);
   assert.deepEqual(readStatusMarker(noContent, SEL), { marker: 'unclear', contentElements: 0 });
-  const twoParts = el('div', {}, [el('div', { class: 'markdown' }, [el('p', {}, ['part one'])]), el('div', { class: 'markdown' }, [el('p', {}, ['AUTOPILOT STATUS: MILESTONE COMPLETE'])])]);
+  const twoParts = el('div', {}, [el('div', { 'data-markdown-text-style': 'assistant-message' }, [el('p', {}, ['part one'])]), el('div', { 'data-markdown-text-style': 'assistant-message' }, [el('p', {}, ['AUTOPILOT STATUS: MILESTONE COMPLETE'])])]);
   assert.deepEqual(readStatusMarker(twoParts, SEL), { marker: 'unclear', contentElements: 2 });
   assert.equal(textReads, 0, 'not a single text node was read');
   // A hidden second content element does not count, so the visible one is read.
-  const oneVisible = el('div', {}, [el('div', { class: 'markdown' }, [el('p', {}, ['AUTOPILOT STATUS: BLOCKED'])]), el('div', { class: 'markdown' }, [], { visible: false })]);
+  const oneVisible = el('div', {}, [el('div', { 'data-markdown-text-style': 'assistant-message' }, [el('p', {}, ['AUTOPILOT STATUS: BLOCKED'])]), el('div', { 'data-markdown-text-style': 'assistant-message' }, [], { visible: false })]);
   assert.deepEqual(readStatusMarker(oneVisible, SEL), { marker: 'blocked', contentElements: 1 });
 });
 
 test('any doubt pauses: unknown visibility or an exception while reading gives unclear', () => {
-  const noApi = el('div', {}, [el('div', { class: 'markdown' }, [el('p', {}, ['AUTOPILOT STATUS: CONTINUE'])], { noVisibilityApi: true })]);
+  const noApi = el('div', {}, [el('div', { 'data-markdown-text-style': 'assistant-message' }, [el('p', {}, ['AUTOPILOT STATUS: CONTINUE'])], { noVisibilityApi: true })]);
   assert.equal(read(noApi), 'unclear');
   const throwing: MarkerNode = { nodeType: 1, tagName: 'DIV', querySelectorAll: () => { throw new Error('boom'); } };
   assert.equal(read(throwing), 'unclear');
