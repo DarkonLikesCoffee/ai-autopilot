@@ -200,7 +200,7 @@ See `docs/ROADMAP.md` for milestone details. Current order:
 2. ~~**P1 — M2 recovery and observability**~~: **complete 2026-11-06** (T10, T11, live check).
 3. ~~**P1 — M3 stopping and control**~~: **complete 2026-11-10** (section 5c).
 4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
-5. **M5 product polish — next (owner, 2026-11-10: before M4).** Proposal: `docs/design/m5-release-quality.md`, awaiting approval.
+5. **M5 product polish (current).** Approved 2026-11-10: `docs/design/m5-release-quality.md` (decisions D-1 to D-7, requirements R-1 to R-5).
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
 
 ## 7. Actionable task queue
@@ -307,13 +307,13 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-10 | Run 6 (owner): M1 S1–S2 after #29 PASS. Behavioural evidence (user-reported): worked, no issues; max 3, marker off, continuation prompt `hey`. No per-answer diagnostics recorded. M3 reassessed: code, tests, docs and M3-L0 are done; **M3-L1 to L6 have not been run**, so M3 is **not complete**. | [VERIFIED] owner report (behavioural). | Documentation only; `npm run check` PASS. |
 | 2026-11-10 | Owner reported M3-L1 to L6, all PASS (recorded with behavioural and diagnostic evidence separated; no diagnostic value inferred; L1 and L4 behavioural only). Until this report the record had only M3-L0 and Run 6, so #31 marked L1–L6 NOT RUN. **M3 marked complete** after a final reassessment, with the residual gaps listed in section 5c. | [VERIFIED] owner report. | Documentation only; `npm run check` PASS. |
 | 2026-11-10 | Owner chose M5 before M4. M5 audit and proposal written: `docs/design/m5-release-quality.md` (current state, 10 problems with priorities, changes C-1 to C-10, acceptance criteria, order, decisions D-1 to D-7). Notable findings: the README calls the required `notifications` permission optional; stored answered keys contain conversation and message ids but are not disclosed; a packed build was never tested (alarm minimum may differ). No implementation. | Proposal only. | `npm run check` PASS. |
+| 2026-11-10 | Owner approved M5 with D-1 MIT (repository public: checked), D-2 0.3.0, D-3 1 s minimum delay, D-4 GitHub Releases only, D-5 axe-core, D-6 English, D-7 audit `chat.openai.com` first; and R-1 to R-5 (precise privacy table, CI ZIP but no automatic release, a live sub-30 s delay check on the installed ZIP, manual accessibility checks alongside axe, M1–M3 preserved). **No tag or public release until the owner approves the release candidate.** Design doc updated. | Decision record. | `npm run check` PASS. |
 
 ## 12. Exact next action
 
-- **Owner:** review `docs/design/m5-release-quality.md` and answer decisions D-1 to D-7 (licence, version, delay minimum, distribution, axe-core, UI language, `chat.openai.com`).
-- **Cloud, after approval:** implement in the proposed order, one focused PR each: C-2/C-3 packaging and packed-build check → C-1 privacy → C-5 copy review → C-6 settings → C-4 first run → C-8 page check → C-7 accessibility → C-9 docs and release.
-- **Not to do before approval:** any M5 implementation.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED`: waiting for the owner's review of the M5 proposal.
+- **Cloud:** implement M5 in the order of `docs/design/m5-release-quality.md` section 5, one focused PR each, starting with C-2 (packaging, version 0.3.0, a CI ZIP artifact without any release step) and the C-3 code part (the delay does not depend on the alarm).
+- **Never without the owner's explicit approval:** tagging `v0.3.0` or publishing a GitHub Release.
+- **Reply status:** `AUTOPILOT STATUS: CONTINUE`
 
 ## 13. Update protocol
 

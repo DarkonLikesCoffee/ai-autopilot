@@ -1,8 +1,9 @@
 # M5 proposal: release quality (audit and plan)
 
-Status: **Proposed (2026-11-10). Not implemented.** The owner chose M5
-before M4 (2026-11-10). Implementation starts only after the owner approves
-this proposal and answers the decisions in section 6.
+Status: **Approved by the owner (2026-11-10)** with decisions D-1 to D-7
+(section 6) and requirements R-1 to R-5 (section 7). Implemented in focused
+PRs in the order of section 5. **No public release and no `v0.3.0` tag
+until the owner explicitly approves the release candidate.**
 
 Ground rules: keep every reliability and privacy guarantee of M1–M3; no new
 host permissions; no new runtime behaviour beyond what an item below states;
@@ -138,14 +139,30 @@ Target: no WCAG 2.2 AA failures in the panel for contrast, names, roles, keyboar
 
 Each step is one focused PR with tests, through the usual CI and auto-merge workflow.
 
-## 6. Decisions needed from the owner
+## 6. Decisions (owner, 2026-11-10)
 
-| # | Decision | Recommendation |
+| # | Decision | Owner's choice | Notes |
+|---|---|---|---|
+| D-1 | Licence | **MIT**, provided the repository stays public and reusable | The repository is public (checked 2026-11-10). Copyright holder: the GitHub account `DarkonLikesCoffee` |
+| D-2 | Version | **0.3.0** | `package.json` and `manifest.json` move to 0.3.0 for the release candidate. **No tag** until the owner approves the release candidate |
+| D-3 | Delay minimum | **1 second** | `LIMITS.delaySeconds.min` from 0 to 1. Stored settings with 0 are normalized to the default (as for any out-of-range value); the user sees the change in Settings |
+| D-4 | Distribution | **GitHub Releases only** | Installed by unzipping and *Load unpacked* |
+| D-5 | axe-core | **Yes**, a pinned dev dependency | Runs in the E2E; complements, never replaces, the manual checks (R-4) |
+| D-6 | UI language | **English for 0.3.0** | Documented; ChatGPT interface languages verified live: Spanish |
+| D-7 | `chat.openai.com` | **Audit first; remove if demonstrably unnecessary** | See C-1. The audit needs one owner observation, because OpenAI sites are not reachable from cloud sessions |
+
+## 7. Additional requirements (owner, 2026-11-10)
+
+| # | Requirement | How the plan meets it |
 |---|---|---|
-| D-1 | Licence | MIT (permissive), or keep "all rights reserved" if it stays private |
-| D-2 | Version for this release | 0.3.0 (not 1.0: English UI unverified live, tool/sources answers not captured) |
-| D-3 | Keep `delaySeconds` minimum 0? | Raise to 1, consistent with the confirmation delay |
-| D-4 | Distribution: GitHub releases (zip, *Load unpacked*) only, or also the Chrome Web Store? | GitHub releases for 0.3.0. The store needs a privacy policy (C-1 provides it), permission justifications, and an assessment of OpenAI's terms by the owner |
-| D-5 | Add axe-core (dev dependency) for an automated accessibility check? | Yes, pinned, E2E only |
-| D-6 | UI language | English only for 0.3.0, documented; Spanish later if wanted |
-| D-7 | Keep `chat.openai.com` in host permissions? | Keep until there is evidence it is unused (it is a legacy domain; removing it is harmless if it only redirects, but that is unverified) |
+| R-1 | The privacy documentation must accurately distinguish locally stored **prompts, identifiers, activity logs and answer content**, with storage locations, retention and deletion; no broader claims than the code supports | C-1: one table row per stored item, giving the storage area (`chrome.storage.local` key, `chrome.storage.session`, ChatGPT's own `localStorage` for the diagnostics switch, in-memory only), what it contains, the bound or retention, when it is deleted, and a code reference for each claim. Answer content: **not stored** (M3 reads it only temporarily). A test keeps the table in step with the storage keys and manifest permissions |
+| R-2 | CI generates a ZIP artifact but **never publishes a GitHub Release automatically** | C-2: the CI job uploads the ZIP as a workflow artifact only. No `release` or `tag` step, no `contents: write` permission. The owner tests the exact artifact; publishing is a manual step in `docs/RELEASING.md` |
+| R-3 | The packed-build alarm behaviour must be verified **with an actual installed ZIP**, especially delays **below 30 s**; development-build tests do not count | C-3: the owner downloads the CI artifact, installs it, and times delays of 5 s and 20 s (live rows P-L1 and P-L2). In addition, the delay must not *depend* on `chrome.alarms` for sub-30 s values: the worker timer and the page ping are the primary triggers, and the alarm is a fallback. This is tested, so a clamped alarm cannot delay the continuation. Note: per Chrome's documentation the 30 s minimum applies to packed (store or CRX) installs; a ZIP installed with *Load unpacked* is an unpacked extension. The live rows settle it for the way 0.3.0 is actually installed |
+| R-4 | Automated accessibility checks complement, never replace, keyboard and screen-reader checks | C-7: axe in the E2E, **and** `docs/ACCESSIBILITY_CHECKLIST.md` (keyboard-only walkthrough; screen-reader walkthrough with NVDA or VoiceOver) completed by a person for the release candidate; both are part of the RC acceptance |
+| R-5 | Preserve all existing M1–M3 guarantees and tests | No existing test is removed or weakened; `test/privacy.test.ts` stays as strict or stricter; every M5 PR runs `check` and `e2e` |
+
+## Release-candidate acceptance (before any tag or public release)
+
+1. All M5 changes merged; CI green on `main`.
+2. The owner installs the **exact CI ZIP artifact** and passes: P-L1/P-L2 (delays of 5 s and 20 s), S1–S2, M3-L3, and the accessibility checklist (R-4).
+3. The owner explicitly approves the release candidate. Only then: tag `v0.3.0` and publish the GitHub Release with that ZIP.
