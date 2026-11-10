@@ -44,6 +44,9 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
   // <button aria-label="Enviar" type="submit"> (no data-testid), the stop control "Detener".
   window.__spanish = new URLSearchParams(location.search).get('lang') === 'es';
   if (window.__spanish) document.documentElement.lang = 'es-ES';
+  else document.documentElement.lang = 'en-US';
+  // ?nosend=1: a page whose Send button Autopilot does not find (M5 C-8).
+  window.__noSend = new URLSearchParams(location.search).get('nosend') === '1';
   window.__messages = [];      // every message the page received, in order
   window.__sendBroken = false; // when true, clicking send does nothing (a broken UI)
   let n = 0;
@@ -57,6 +60,7 @@ const FAKE_CHATGPT = `<!doctype html><html><head><meta charset="utf-8"><title>Fa
         : '<button type="submit" aria-label="Enviar"' + (!box.innerText.trim() ? ' disabled' : '') + '>Enviar</button>';
       return;
     }
+    if (window.__noSend && !generating) { controls.innerHTML = ''; return; }
     if (generating) {
       controls.innerHTML = '<button type="button" data-testid="stop-button" aria-label="Stop streaming">Stop</button>';
     } else {
@@ -571,6 +575,27 @@ try {
   await panel.click('#btn-start');
   await sleep(500);
   check('17: Autopilot refuses to start on a page it does not recognize', (await session()).run === 'stopped' && /message box was not found/i.test(await panel.textContent('#banner')));
+
+  // ---- M5 C-8: the Page line ----
+  await stop();
+  const pageText = () => panel.textContent('#f-page');
+  const checkedChat = await openConversation('/c/e2e-page-check');
+  const recognized = await waitFor('page line', async () => /^Recognized: message box, Send button, .*; language en-US\.$/.test(await pageText()), 8000).catch(() => false);
+  check('C-8: a recognized page shows what was found and the interface language', recognized, await pageText());
+  const noSend = await context.newPage();
+  await noSend.goto('https://chatgpt.com/c/e2e-no-send?nosend=1');
+  await noSend.waitForSelector('#prompt-textarea');
+  await noSend.bringToFront();
+  await sleep(300);
+  const emptyBox = await waitFor('page line, empty box', async () => /The Send button is checked once the message box has text\.$/.test(await pageText()), 8000).catch(() => false);
+  check('C-8: no Send button with an empty message box is not a warning', emptyBox && (await panel.$eval('#f-page', (el) => el.dataset.recognized)) === 'true', await pageText());
+  await noSend.evaluate(() => window.__typeDraft('a draft'));
+  const flagged = await waitFor('page line, not recognized', async () => /^This ChatGPT page is not fully recognized \(Send button not found\)/.test(await pageText()), 8000).catch(() => false);
+  check('C-8: no Send button while the box has text shows "not fully recognized"', flagged && (await panel.$eval('#f-page', (el) => el.dataset.recognized)) === 'false', await pageText());
+  const panelHtml = await panel.$eval('#f-page', (el) => el.textContent);
+  check('C-8: the Page line contains no page text', !/a draft/.test(panelHtml));
+  await noSend.close();
+  await checkedChat.close();
 
   // ---- 15: a browser restart does not cause a duplicate ----
   const restartChat = await openConversation('/c/e2e-restart');

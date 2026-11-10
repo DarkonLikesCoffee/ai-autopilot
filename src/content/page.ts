@@ -4,6 +4,7 @@
 import { AUTH_PATTERNS, ERROR_PATTERNS, USAGE_LIMIT_PATTERNS, type SelectorConfig } from './selectors.ts';
 import type { PageObservation, PageSignals, ResponseStatus } from '../shared/types.ts';
 import { readStatusMarker, type MarkerNode } from './statusMarker.ts';
+import { isLanguageTag } from '../shared/messages.ts';
 
 export interface ElementLike {
   textContent: string | null;
@@ -156,6 +157,13 @@ export function hasText(element: ElementLike | undefined): boolean {
   return text.replace(/\u00a0/g, ' ').trim().length > 0;
 }
 
+/** The interface language from `<html lang>`: an attribute of the page, not conversation text. */
+export function interfaceLanguage(root: QueryRoot): string | null {
+  const html = (root as { documentElement?: { getAttribute?(name: string): string | null } }).documentElement;
+  const lang = html?.getAttribute?.('lang')?.trim() ?? '';
+  return isLanguageTag(lang) ? lang : null;
+}
+
 export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signals: PageSignals; lastMessageId: string | null; lastMessage: ElementLike | undefined } {
   const assistants = findMessages(root, selectors.assistantMessage);
   const last = assistants[assistants.length - 1];
@@ -175,6 +183,7 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       unrecognizedNoticeFound: unrecognizedNotice(root, selectors),
       statusMarker: 'none',
       answerContentElements: 0,
+      interfaceLanguage: interfaceLanguage(root),
     },
     lastMessageId: messageId(last, selectors.messageIdAttributes),
     lastMessage: last,

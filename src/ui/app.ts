@@ -49,6 +49,7 @@ const MARKUP = `
       <dt>Next continuation in</dt><dd id="f-countdown">—</dd>
       <dt>Last continuation</dt><dd id="f-last">—</dd>
       <dt>Last error</dt><dd id="f-error">—</dd>
+      <dt>Page</dt><dd id="f-page">—</dd>
     </dl>
   </section>
 
@@ -262,6 +263,9 @@ function render(): void {
   $('f-countdown').textContent = view.countdown;
   $('f-last').textContent = view.lastContinuation;
   $('f-error').textContent = view.lastError;
+  const pageLine = $('f-page');
+  pageLine.textContent = view.page?.text ?? '—';
+  pageLine.dataset.recognized = view.page ? String(view.page.recognized) : '';
   renderSettingsState();
 
   const log = $('log');

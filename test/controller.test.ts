@@ -1025,3 +1025,14 @@ test('C-4: the snapshot says whether the active tab is connected, before Start o
   assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.activeTabConnected, null, 'while running it is not checked');
   assert.equal(h.submits.length, 0, 'the check sends nothing');
 });
+
+test('C-8: the snapshot carries the page signals of the tab Autopilot works in, never text', async () => {
+  const h = harness();
+  h.page.observation = obs('complete', key('m1'), undefined, { assistantMessageCount: 2, interfaceLanguage: 'es-ES' });
+  const before = ok(await h.ui('GET_SNAPSHOT')).snapshot.page;
+  assert.deepEqual(before, { composerFound: true, composerHasText: false, sendControlFound: true, stopControlFound: false, assistantMessageCount: 2, interfaceLanguage: 'es-ES' });
+  ok(await h.ui('START'));
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.page?.assistantMessageCount, 2, 'while running: the session tab');
+  h.page.reachable = false;
+  assert.equal(ok(await h.ui('GET_SNAPSHOT')).snapshot.page, null, 'a tab that does not answer has no Page line');
+});

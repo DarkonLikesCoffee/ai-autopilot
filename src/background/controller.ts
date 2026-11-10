@@ -213,12 +213,21 @@ export function createController(deps: ControllerDeps): Controller {
       safe(tabs.activeChatgptTab(), null),
       safe(loadGettingStarted(storage), false),
     ]);
-    // Before Start only: does the tab Start would use answer? The content script
-    // returns its last observation, so this reads nothing new on the page.
-    const activeTabConnected = session.run === 'stopped' && activeTab
-      ? (await safe(tabs.getObservation(activeTab.tabId), null)) !== null
-      : null;
-    return { settings, session, sessionTab, activeTab, activeTabConnected, gettingStarted, now: deps.now() };
+    // The tab the panel describes: before Start the one Start would use, otherwise the
+    // session's. The content script returns its last observation, so this reads
+    // nothing new on the page.
+    const pageTab = session.run === 'stopped' ? activeTab?.tabId ?? null : sessionTab?.tabId ?? null;
+    const observation = pageTab === null ? null : await safe(tabs.getObservation(pageTab), null);
+    const activeTabConnected = session.run === 'stopped' && activeTab ? observation !== null : null;
+    const page = observation ? {
+      composerFound: observation.signals.composerFound,
+      composerHasText: observation.signals.composerHasText,
+      sendControlFound: observation.signals.sendControlFound,
+      stopControlFound: observation.signals.stopControlFound,
+      assistantMessageCount: observation.signals.assistantMessageCount,
+      interfaceLanguage: observation.signals.interfaceLanguage ?? null,
+    } : null;
+    return { settings, session, sessionTab, activeTab, activeTabConnected, page, gettingStarted, now: deps.now() };
   }
 
   /** The tab to resume in: the session's tab if it still exists, otherwise one showing the conversation. */

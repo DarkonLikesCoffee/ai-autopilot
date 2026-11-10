@@ -74,7 +74,9 @@ you choose *Don't show again*. Updates do not show it again.
 - **Controls:** Start Autopilot, Pause / Resume, Stop.
 - **Session:** current conversation, continuations sent (of the maximum, or ∞),
   ChatGPT's current state, time until the next continuation, the last
-  continuation's time and the last error.
+  continuation's time, the last error, and a **Page** line: what Autopilot
+  recognizes on the ChatGPT page (message box, Send or Stop button, number of
+  answers, interface language), or "not fully recognized" with what is missing.
 - **Settings:** continuation prompt, delay before sending (1–3600 s), completion
   confirmation delay (1–120 s), maximum cycles (or **Unlimited**), notifications
   and *Stop on status marker*. An invalid value is marked next to its field and
