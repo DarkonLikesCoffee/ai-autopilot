@@ -70,7 +70,9 @@ Before implementation, design:
 
 Do not begin this milestone until M1 and the relevant M2 foundations are reliable.
 
-## M5 — UX, onboarding and release quality (P3)
+## M5 — UX, onboarding and release quality — next (owner, 2026-11-10: before M4)
+
+Audit and proposal: `docs/design/m5-release-quality.md` (awaiting approval).
 
 **Outcome:** A new user can understand the extension and operate it safely.
 
