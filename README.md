@@ -111,34 +111,26 @@ undocumented APIs, no session tokens, no rate-limit workarounds.
 
 ## Permissions and privacy
 
-| Permission | Why |
-|---|---|
-| `https://chatgpt.com/*`, `https://chat.openai.com/*` | Observe the page state and send the continuation in your ChatGPT tab |
-| `storage` | Settings and session state, on this computer only |
-| `alarms` | Wake up when the delay ends, even if Chrome paused the background worker |
-| `notifications` | Tell you when Autopilot pauses or stops (optional) |
-| `sidePanel` | The side panel view |
+**Full details: [PRIVACY.md](PRIVACY.md)**: what is read, what is kept,
+where, for how long, and how to delete it, with the code for each claim.
 
-The extension does not access GitHub, cookies or any other site, has no backend
-and no external AI service, and stores no credentials. It never stores, sends or
-logs the text of your conversation. By default it does not read it either: it
-reads page structure (buttons, message counts and ids, notices) and whether the
-message box is empty.
-
-**The one exception is opt-in.** When **Stop on status marker** is on, Autopilot reads the visible text of the
-latest finished answer only temporarily, in the ChatGPT tab, to compare its last
-line with three fixed status lines. That text is **never persisted** (not in
-extension storage, not in the session), **never transmitted** (not to the
-background worker, not to any server), **never logged** (not in the activity
-log, console diagnostics, notifications or diagnostic reports) and **never
-retained in application state**. Only the result of the comparison leaves that
-moment: one of `none`, `continue`, `complete`, `blocked`, `unclear`. When the
-setting is off (the default), the answer is not read at all.
-
-Enforced by tests: a source scan lists every place that reads page text, and
-fails if a new one appears; an answer full of a test secret never reaches the
-observation, diagnostics, report or stored state (`test/privacy.test.ts`,
-`test/statusMarker.test.ts`, `test/markerFlow.test.ts`).
+In short:
+- **No server, no analytics, no telemetry.** Nothing is sent over the network.
+- **Read on the ChatGPT page:** page structure (buttons, message counts and
+  ids, turn markers), whether the message box is empty or holds exactly the
+  prompt, and short notice texts (matched against fixed patterns, then
+  discarded). The answer text is read **only** with the opt-in **Stop on
+  status marker**, temporarily, for an exact comparison; it is never
+  persisted, transmitted, logged or retained.
+- **Kept in `chrome.storage.local` (this computer):** your settings,
+  including your continuation prompt; the session state; the last 200 answered
+  responses as **ChatGPT conversation and message ids** (no text), so a
+  response is never answered twice; the last 40 activity-log lines (written
+  by the extension). Uninstalling removes all of it; *Reset to defaults* resets
+  only the settings.
+- **Permissions:** `chatgpt.com` (and the older `chat.openai.com`),
+  `storage`, `alarms` (a fallback timer), `notifications` (required by the
+  manifest; whether notifications are shown is your setting), `sidePanel`.
 
 ## Stop on status marker (optional)
 

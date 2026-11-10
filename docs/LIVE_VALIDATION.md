@@ -445,6 +445,22 @@ that S1–S2 still behave.
 The answer-content selector is then chosen from that structure, with a
 regression test built from it, and M3-L0 is repeated.
 
+## D-7: is `chat.openai.com` still needed? (owner, one observation)
+
+Code audit (2026-11-10): `chat.openai.com` appears in the manifest
+(`host_permissions` and the content-script `matches`), in
+`CHATGPT_PATTERNS` (finding the conversation's tab on Resume) and in
+`isChatgptUrl` (accepting messages from such a tab). Nothing else depends on
+it. It is needed only if ChatGPT can still be used **at** that address.
+
+| # | Do | Record |
+|---|---|---|
+| D7-L1 | In Chrome, open `https://chat.openai.com/` and wait for the page to load | The final address in the address bar: still `chat.openai.com`, or `chatgpt.com` |
+
+If the address always ends at `chatgpt.com`, the permission is removed in a
+follow-up PR (manifest, patterns, tests, `PRIVACY.md`). If ChatGPT stays at
+`chat.openai.com`, it is kept.
+
 ## Release candidate on the installed ZIP (M5, R-3)
 
 Install the exact CI artifact as described in `docs/RELEASING.md` section 2
