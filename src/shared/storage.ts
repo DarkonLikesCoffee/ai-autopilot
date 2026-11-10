@@ -7,6 +7,13 @@ import type { SessionState, Settings } from './types.ts';
 
 export const SETTINGS_KEY = 'autopilot.settings.v2';
 export const SESSION_KEY = 'autopilot.session.v2';
+/**
+ * The Getting started card (M5 C-4): 'show' after a fresh install, 'dismissed'
+ * once you choose "Don't show again". Absent (an update from an older version)
+ * means not shown. Kept next to the settings, but not in them, so saving or
+ * resetting the settings never brings the card back.
+ */
+export const GETTING_STARTED_KEY = 'autopilot.gettingStarted';
 
 export interface StorageAreaLike {
   get(keys: string | string[]): Promise<Record<string, unknown>>;
@@ -29,6 +36,15 @@ export async function loadSession(area: StorageAreaLike): Promise<SessionState> 
 
 export async function saveSession(area: StorageAreaLike, state: SessionState): Promise<void> {
   await area.set({ [SESSION_KEY]: state });
+}
+
+export async function loadGettingStarted(area: StorageAreaLike): Promise<boolean> {
+  const data = await area.get(GETTING_STARTED_KEY);
+  return data[GETTING_STARTED_KEY] === 'show';
+}
+
+export async function saveGettingStarted(area: StorageAreaLike, value: 'show' | 'dismissed'): Promise<void> {
+  await area.set({ [GETTING_STARTED_KEY]: value });
 }
 
 /**

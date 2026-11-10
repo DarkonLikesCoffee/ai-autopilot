@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultSettings } from '../src/shared/settings.ts';
 import { initialSession, MAX_ANSWERED_KEYS, MAX_LOG_ENTRIES } from '../src/shared/session.ts';
-import { SESSION_KEY, SETTINGS_KEY } from '../src/shared/storage.ts';
+import { GETTING_STARTED_KEY, SESSION_KEY, SETTINGS_KEY } from '../src/shared/storage.ts';
 import { DEBUG_STORAGE_KEY } from '../src/content/diagnostics.ts';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -21,7 +21,7 @@ test('every manifest permission and host is listed in PRIVACY.md', () => {
 test('every storage key is listed in PRIVACY.md', () => {
   const background = read('src/background/index.ts');
   const aliveKey = background.match(/const ALIVE_KEY = '([^']+)'/)![1]!;
-  for (const key of [SETTINGS_KEY, SESSION_KEY, aliveKey, DEBUG_STORAGE_KEY]) {
+  for (const key of [SETTINGS_KEY, SESSION_KEY, GETTING_STARTED_KEY, aliveKey, DEBUG_STORAGE_KEY]) {
     assert.ok(privacy.includes(`\`${key}\``), `PRIVACY.md does not list the storage key ${key}`);
   }
 });

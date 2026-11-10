@@ -104,7 +104,7 @@ test('R10: the answer text reaches no observation, console diagnostic, message o
   assert.ok(!JSON.stringify(collectDiagnostic(root, o)).includes('SECRET'), 'console diagnostic');
   assert.ok(isPageObservation(o), 'a valid observation crosses to the background');
   const report = formatDiagnosticReport({
-    snapshot: { settings: { ...defaultSettings(), stopOnMarker: true }, session: initialSession(), sessionTab: null, activeTab: null, now: 0 },
+    snapshot: { settings: { ...defaultSettings(), stopOnMarker: true }, session: initialSession(), sessionTab: null, activeTab: null, activeTabConnected: null, gettingStarted: false, now: 0 },
     observation: o, lastSend: null, environment: { extensionVersion: 'v', userAgent: 'u' },
   });
   assert.ok(!report.includes('SECRET'), 'diagnostic report');

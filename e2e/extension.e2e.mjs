@@ -14,7 +14,7 @@
 import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assistantTurn, codeBlock, FIXTURE_CSS, paragraph, toHtml } from '../test/fixtures/liveStructure.ts';
 
@@ -159,6 +159,17 @@ try {
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await panel.waitForSelector('#btn-start');
+
+  // ---- M5 C-4: Getting started after a fresh install, once ----
+  await panel.waitForFunction(() => !document.getElementById('getting-started').hidden, null, { timeout: 5000 }).catch(() => {});
+  check('C-4: a fresh install shows Getting started', await panel.$eval('#getting-started', (el) => !el.hidden && /Send your first message yourself/.test(el.textContent)));
+  await panel.click('#btn-gs-dismiss');
+  await panel.waitForFunction(() => document.getElementById('getting-started').hidden);
+  check('C-4: "Don\'t show again" hides it and keeps focus in the panel', await panel.evaluate(() => document.activeElement?.id === 'status-label'));
+  await panel.reload();
+  await panel.waitForSelector('#btn-start');
+  await sleep(500); // a snapshot has arrived
+  check('C-4: the dismissal is kept after reopening the panel', await panel.$eval('#getting-started', (el) => el.hidden));
   await panel.click('#settings summary');
   await panel.fill('#s-prompt', PROMPT);
   await panel.fill('#s-delay', '1');
@@ -577,7 +588,49 @@ try {
     return (await chrome.storage.local.get('autopilot.session.v2'))['autopilot.session.v2'];
   });
   check('15: after a browser restart the session is paused, not resumed blindly', s2.run === 'paused' && s2.reason === 'browser_restarted' && s2.tabId === null, `${s2.run}/${s2.reason}`);
+
   await relaunched.context.close();
+
+  // ---- M5 C-4: a ChatGPT tab open before the install gets the reload hint, not a failed Start ----
+  // The real case: the tab exists first, then the extension is installed (over the
+  // DevTools protocol), so the tab has no content script until it is reloaded.
+  {
+    const profile2 = mkdtempSync(join(tmpdir(), 'autopilot-e2e-install-'));
+    const ctx = await chromium.launchPersistentContext(profile2, {
+      channel: 'chromium',
+      headless: true,
+      ignoreDefaultArgs: ['--disable-extensions'],
+      args: ['--remote-debugging-port=0', '--enable-unsafe-extension-debugging'],
+    });
+    try {
+      await ctx.route('https://chatgpt.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_CHATGPT }));
+      const oldTab = await ctx.newPage();
+      await oldTab.goto('https://chatgpt.com/c/e2e-before-install');
+      await oldTab.waitForSelector('[data-testid="send-button"]');
+      const port = await waitFor('DevTools port', () => { try { return readFileSync(join(profile2, 'DevToolsActivePort'), 'utf8').split('\n')[0]; } catch { return null; } });
+      const cdpBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+      const { id } = await (await cdpBrowser.newBrowserCDPSession()).send('Extensions.loadUnpacked', { path: resolve(extensionDir) });
+      const panel4 = await ctx.newPage();
+      await panel4.goto(`chrome-extension://${id}/sidepanel.html`);
+      await panel4.waitForSelector('#btn-start');
+      await oldTab.bringToFront();
+      const hinted = await panel4.waitForFunction(() => {
+        const hint = document.getElementById('start-hint');
+        return !hint.hidden && /Reload this ChatGPT tab so Autopilot can connect/.test(hint.textContent);
+      }, null, { timeout: 8000 }).then(() => true, () => false);
+      check('C-4: a tab open before the install shows the reload hint before Start, and Start is unavailable', hinted && await panel4.$eval('#btn-start', (b) => b.disabled));
+      check('C-4: this fresh install shows Getting started', await panel4.$eval('#getting-started', (el) => !el.hidden));
+      await oldTab.reload();
+      await oldTab.waitForSelector('[data-testid="send-button"]');
+      await oldTab.bringToFront();
+      const recovered = await panel4.waitForFunction(() => document.getElementById('start-hint').hidden && !document.getElementById('btn-start').disabled, null, { timeout: 8000 }).then(() => true, () => false);
+      check('C-4: after reloading the tab, the hint goes and Start is available', recovered);
+      await cdpBrowser.close().catch(() => {});
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profile2, { recursive: true, force: true });
+    }
+  }
 } catch (error) {
   console.error(error);
   failures += 1;

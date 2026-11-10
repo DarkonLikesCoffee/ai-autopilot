@@ -7,7 +7,7 @@ import { testSettings } from './helpers/fixtures.ts';
 
 const tab = { tabId: 1, title: 'Build the app', conversation: '/c/abc' };
 function snap(session: Partial<UiSnapshot['session']>, extra: Partial<UiSnapshot> = {}): UiSnapshot {
-  return { settings: testSettings({ maxCycles: 10 }), session: { ...initialSession(), ...session }, sessionTab: null, activeTab: tab, now: 1000, ...extra };
+  return { settings: testSettings({ maxCycles: 10 }), session: { ...initialSession(), ...session }, sessionTab: null, activeTab: tab, activeTabConnected: true, gettingStarted: false, now: 1000, ...extra };
 }
 
 test('each state maps to its label and controls', () => {
@@ -42,4 +42,15 @@ test('Start explains what is missing when no ChatGPT tab is active', () => {
   const view = buildView(snap({}, { activeTab: null }), 0);
   assert.equal(view.canStart, false);
   assert.match(view.startHint ?? '', /Open a ChatGPT conversation/);
+});
+
+test('C-4: an unconnected ChatGPT tab shows the reload hint and Start is unavailable', () => {
+  const unconnected = buildView(snap({}, { activeTabConnected: false }), 1000);
+  assert.equal(unconnected.canStart, false);
+  assert.equal(unconnected.startHint, 'Reload this ChatGPT tab so Autopilot can connect to it, then press Start.');
+  const connected = buildView(snap({}, { activeTabConnected: true }), 1000);
+  assert.ok(connected.canStart && connected.startHint === null);
+  const noTab = buildView(snap({}, { activeTab: null, activeTabConnected: null }), 1000);
+  assert.match(noTab.startHint ?? '', /^Open a ChatGPT conversation/);
+  assert.equal(buildView(snap({ run: 'running' }, { activeTabConnected: false }), 1000).startHint, null, 'no hint while running');
 });
