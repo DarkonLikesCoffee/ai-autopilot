@@ -1,7 +1,7 @@
 // Turns a snapshot into what the panel shows. Pure, so it can be tested.
 
 import type { UiSnapshot } from '../shared/messages.ts';
-import { REASON_TEXT } from '../shared/session.ts';
+import { haltSentence } from '../shared/session.ts';
 import { HALT_KIND_LABEL, haltGuidance, type HaltKind } from '../shared/guidance.ts';
 import type { SessionState } from '../shared/types.ts';
 
@@ -40,12 +40,12 @@ export interface PanelView {
 }
 
 export const GENERATION_TEXT: Record<ResponseStatus, string> = {
-  unknown: 'Unknown',
+  unknown: 'Not recognized',
   idle: 'Idle',
-  generating: 'Generating',
-  complete: 'Finished',
-  error: 'Error shown',
-  usage_limit: 'Usage limit shown',
+  generating: 'Answering',
+  complete: 'Answer finished',
+  error: 'Shows an error',
+  usage_limit: 'Shows a usage limit',
 };
 
 export function formatClock(at: number | null): string {
@@ -64,9 +64,9 @@ const STATUS_LABEL: Record<StatusKey, string> = {
   stopped: 'Stopped',
   running: 'Running',
   waiting_chatgpt: 'Waiting for ChatGPT',
-  waiting_delay: 'Waiting before continuation',
+  waiting_delay: 'Continuation in …',
   paused: 'Paused',
-  error: 'Error',
+  error: 'Stopped by an error',
 };
 
 const TONE: Record<StatusKey, Tone> = {
@@ -88,23 +88,22 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
     status = session.run;
   }
 
-  const reasonText = session.reason ? REASON_TEXT[session.reason] : '';
-  const reasonDetail = reasonText ? `${reasonText}${session.detail ? `: ${session.detail}` : ''}.` : '';
+  const reasonDetail = session.reason ? haltSentence(session.reason, session.detail) : '';
   let detail: string;
   switch (status) {
     case 'waiting_chatgpt':
       detail = session.generationSeen || session.lastStatus === 'generating'
-        ? 'ChatGPT is working. The continuation is sent after it finishes.'
-        : 'Waiting for ChatGPT to start and finish a response. Send a message to begin.';
+        ? 'ChatGPT is answering. Autopilot sends the continuation after the answer is finished.'
+        : 'Waiting for ChatGPT. Send your first message yourself to begin.';
       break;
     case 'waiting_delay':
-      detail = 'ChatGPT finished. The continuation prompt is sent when the countdown ends.';
+      detail = 'The answer is finished. The continuation is sent when the countdown ends.';
       break;
     case 'running':
-      detail = 'Sending the continuation prompt…';
+      detail = 'Sending the continuation…';
       break;
     case 'stopped':
-      detail = session.reason && session.reason !== 'user' ? reasonDetail : 'Start Autopilot in the ChatGPT conversation you want to continue.';
+      detail = session.reason && session.reason !== 'user' ? reasonDetail : 'Open the ChatGPT conversation you want to continue, then press Start.';
       break;
     default:
       detail = session.reason === 'user' ? 'Paused by you.' : reasonDetail || (status === 'paused' ? 'Paused.' : 'Something needs your attention.');
@@ -118,14 +117,14 @@ export function buildView(snapshot: UiSnapshot, now: number): PanelView {
 
   return {
     status,
-    statusLabel: STATUS_LABEL[status],
+    statusLabel: status === 'waiting_delay' && countdown !== '—' ? `Continuation in ${countdown}` : STATUS_LABEL[status],
     tone: TONE[status],
     detail,
     canStart: session.run === 'stopped' && activeTab !== null,
     canPause: session.run === 'running',
     canResume: session.run === 'paused' || session.run === 'error',
     canStop: session.run !== 'stopped',
-    startHint: session.run === 'stopped' && activeTab === null ? 'Open a ChatGPT conversation in this window to start.' : null,
+    startHint: session.run === 'stopped' && activeTab === null ? 'Open a ChatGPT conversation in this window, then press Start.' : null,
     conversation,
     cycles: `${session.cycles} / ${limit}`,
     generation: GENERATION_TEXT[session.lastStatus],

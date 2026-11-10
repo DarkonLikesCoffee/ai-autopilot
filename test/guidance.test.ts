@@ -38,11 +38,11 @@ test('every halt reason has guidance of the expected kind', () => {
 
 test('"fix" guidance always ends with how to continue; "finished" never offers Resume', () => {
   for (const [reason, g] of Object.entries(HALT_GUIDANCE)) {
-    if (g.kind === 'fix') assert.match(g.action, /press Resume/, reason);
+    if (g.kind === 'fix') assert.match(g.action, /press Resume/i, reason);
     if (g.kind === 'finished') assert.doesNotMatch(g.action, /Resume/, reason);
   }
   assert.match(HALT_GUIDANCE.usage_limit.action, /never retries on its own/);
-  assert.match(HALT_GUIDANCE.submission_uncertain.action, /not answered again/);
+  assert.match(HALT_GUIDANCE.submission_uncertain.action, /not continued again/);
 });
 
 const session = (over: Partial<SessionState>): SessionState => ({ ...initialSession(), ...over });

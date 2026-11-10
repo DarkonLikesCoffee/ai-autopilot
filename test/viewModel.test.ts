@@ -17,14 +17,15 @@ test('each state maps to its label and controls', () => {
   const watching = buildView(snap({ run: 'running', phase: 'watching' }, { sessionTab: tab }), 1000);
   assert.equal(watching.statusLabel, 'Waiting for ChatGPT');
   assert.ok(watching.canPause && watching.canStop && !watching.canResume && !watching.canStart);
-  assert.equal(buildView(snap({ run: 'running', phase: 'delay', dueAt: 6000, pendingKey: 'k' }), 1000).statusLabel, 'Waiting before continuation');
+  assert.equal(buildView(snap({ run: 'running', phase: 'delay', dueAt: 6000, pendingKey: 'k' }), 1000).statusLabel, 'Continuation in 5s', 'the countdown is part of the status');
+  assert.equal(buildView(snap({ run: 'running', phase: 'delay', dueAt: null, pendingKey: 'k' }), 1000).statusLabel, 'Continuation in …');
   assert.equal(buildView(snap({ run: 'running', phase: 'submitting', pendingKey: 'k' }), 1000).statusLabel, 'Running');
   const paused = buildView(snap({ run: 'paused', reason: 'composer_has_text' }), 1000);
   assert.ok(paused.canResume && paused.canStop && !paused.canPause);
-  assert.match(paused.detail, /message box already contains text/);
-  const error = buildView(snap({ run: 'error', reason: 'usage_limit', detail: 'Nothing will be sent until you resume.' }), 1000);
-  assert.equal(error.statusLabel, 'Error');
-  assert.match(error.lastError, /usage limit: Nothing will be sent/);
+  assert.match(paused.detail, /message box already contained text/);
+  const error = buildView(snap({ run: 'error', reason: 'usage_limit', detail: 'nothing is sent until you press Resume' }), 1000);
+  assert.equal(error.statusLabel, 'Stopped by an error');
+  assert.match(error.lastError, /^ChatGPT shows a usage limit: nothing is sent until you press Resume\.$/);
 });
 
 test('session facts: cycles with limit or ∞, countdown, conversation', () => {

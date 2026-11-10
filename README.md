@@ -62,8 +62,8 @@ Requires Chrome 116 or newer (or another Chromium browser with Manifest V3).
 
 ## The control panel
 
-- **Status:** Running, Waiting for ChatGPT, Waiting before continuation, Paused,
-  Stopped or Error, with the reason when it is not running and what to do:
+- **Status:** Running, Waiting for ChatGPT, Continuation in … (with the countdown),
+  Paused, Stopped or Stopped by an error, with the reason when it is not running and what to do:
   *Resume when ready*, *Fix first* (with the one thing to fix) or *Finished*.
 - **Controls:** Start Autopilot, Pause / Resume, Stop.
 - **Session:** current conversation, continuations sent (of the maximum, or ∞),
@@ -216,10 +216,10 @@ local fake ChatGPT page and drives the real panel.
   a translated label. Recognized: English and Spanish (`Enviar`, `Detener`,
   observed on es-ES). Live-verified: Spanish (es-ES) only. Usage-limit, login
   and error notices are recognized by their English texts only. On other
-  interface languages such a notice makes Autopilot pause ("a notice Autopilot
+  interface languages such a notice makes Autopilot pause ("a notice that Autopilot
   does not recognize") instead of continuing. Other languages work when ChatGPT provides its
   language-independent `data-testid`/`id`; otherwise sending stops with "the
-  send button did not become available" until the label is added
+  Send button was not available" until the label is added
   (`docs/LIVE_VALIDATION.md` → "Adding a language").
 - The tab must stay open. It may be behind other tabs: Autopilot sends into the
   session's tab, never the active one (tested). Whether typing and sending behave

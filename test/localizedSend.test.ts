@@ -228,7 +228,7 @@ test('with the previous send selectors, this page reproduces the reported live f
     sendReadyMs: 3000, confirmMs: 3000, pollMs: 100, lateMarginMs: 2000,
     sleep: async (ms) => { clock += ms; }, now: () => clock, diagnose: (d) => seen.push(d),
   });
-  assert.deepEqual(result, { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the send button did not become available' });
+  assert.deepEqual(result, { outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the Send button was not available' });
   const failed = seen.find((d) => d.stage === 'send_button_unavailable')!;
   // Exactly what the owner's diagnostics showed.
   assert.equal(failed.composer?.holdsPrompt, true);

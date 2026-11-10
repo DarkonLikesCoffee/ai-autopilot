@@ -336,12 +336,12 @@ test('16: a failed or unconfirmed submission is handled safely and not retried',
   const failing = harness();
   ok(await failing.ui('START'));
   await failing.respond('m1');
-  failing.page.onSubmit = () => ({ outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the send button did not become available' });
+  failing.page.onSubmit = () => ({ outcome: 'not_submitted', reason: 'send_unavailable', detail: 'the Send button was not available' });
   await failing.advance(5000);
   let session = await failing.session();
   assert.equal(session.run, 'error');
   assert.equal(session.reason, 'submit_failed');
-  assert.match(session.detail ?? '', /send button/);
+  assert.match(session.detail ?? '', /Send button/);
   await failing.advance(60_000);
   assert.equal(failing.submits.length, 1, 'no automatic retry');
 
@@ -397,7 +397,7 @@ test('18: the maximum number of cycles is respected', async () => {
   const session = await h.session();
   assert.equal(session.run, 'stopped');
   assert.equal(session.reason, 'max_cycles');
-  assert.ok(h.notifications.some((n) => /Maximum number of continuations/.test(n.message)));
+  assert.ok(h.notifications.some((n) => /maximum number of continuations was sent/.test(n.message)));
 });
 
 test('19: unlimited mode imposes no cycle cap', async () => {
@@ -428,7 +428,7 @@ test('20: settings persist across restarts and invalid settings are refused', as
 test('start is refused without a ChatGPT tab, an attached content script, or while already running', async () => {
   const h = harness();
   h.page.active = false;
-  assert.match((await h.ui('START') as { error: string }).error, /Open your ChatGPT conversation/);
+  assert.match((await h.ui('START') as { error: string }).error, /Open the ChatGPT conversation in this window/);
   h.page.active = true;
   h.page.reachable = false;
   assert.match((await h.ui('START') as { error: string }).error, /Reload the ChatGPT tab/);
@@ -631,15 +631,15 @@ test('a full cycle logs each stage once, in order, without any conversation text
   await h.see(obs('generating', key('m2')));
   const messages = (await h.session()).log.map((entry) => entry.message);
   assert.deepEqual(messages, [
-    'Autopilot started. Waiting for ChatGPT to finish a response.',
-    'ChatGPT is generating a response.',
-    'Response complete. Continuation 1 in 5s.',
+    'Started. Waiting for ChatGPT\'s answer.',
+    'ChatGPT is answering.',
+    'Answer finished. Continuation 1 in 5 s.',
     'Sending continuation 1.',
     'Continuation 1 sent.',
   ], 'the page reported generating right after the send, so the next response is already counted as seen');
   await h.see(obs('complete', key('m2')));
   const later = (await h.session()).log.map((entry) => entry.message).slice(5);
-  assert.deepEqual(later, ['Response complete. Continuation 2 in 5s.']);
+  assert.deepEqual(later, ['Answer finished. Continuation 2 in 5 s.']);
 });
 
 test('a generation observed while the continuation is pending is logged as a cancellation, not twice', async () => {
@@ -648,8 +648,8 @@ test('a generation observed while the continuation is pending is logged as a can
   await h.respond('m1');
   await h.see(obs('generating', key('m2')));
   const messages = (await h.session()).log.map((entry) => entry.message);
-  assert.equal(messages.filter((m) => m === 'ChatGPT is generating a response.').length, 1);
-  assert.equal(messages.at(-1), 'ChatGPT started generating again; the pending continuation was cancelled.');
+  assert.equal(messages.filter((m) => m === 'ChatGPT is answering.').length, 1);
+  assert.equal(messages.at(-1), 'ChatGPT started answering again. The pending continuation was cancelled.');
 });
 
 // --- T6: recovery after the worker restarts during an attempt ---
@@ -939,7 +939,7 @@ test('M3: no answer text can reach stored state; only the marker result is used'
   await finished(h, 'm1', 'blocked');
   const stored = JSON.stringify(h.storage.data);
   for (const word of ['AUTOPILOT STATUS', 'BLOCKED\n']) assert.ok(!stored.includes(word), word);
-  assert.ok(stored.includes('ChatGPT reports it is blocked'), 'the log line is the extension\'s fixed text');
+  assert.ok(stored.includes('ChatGPT\'s status line says it is blocked'), 'the log line is the extension\'s fixed text');
 });
 
 // --- Key-form change (count-based keys before the live-structure fix, id-based after) ---
@@ -956,7 +956,7 @@ test('after an update that changes the key form, Resume never continues the resp
   ok(await h.ui('RESUME'));
   await h.advance(60_000);
   assert.equal(h.submits.length, 0, 'not answered a second time under its new key');
-  assert.ok((await h.session()).log.some((e) => e.message.startsWith('Response identification changed')));
+  assert.ok((await h.session()).log.some((e) => e.message.startsWith('Waiting for ChatGPT\'s next answer (answers are identified differently')));
   // ChatGPT's next answer is continued as usual.
   await h.respond('b0000000');
   await h.advance(5000);

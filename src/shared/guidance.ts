@@ -15,24 +15,27 @@ export interface HaltGuidance {
 }
 
 export const HALT_GUIDANCE: Record<HaltReason, HaltGuidance> = {
-  user: { kind: 'resume', action: 'Press Resume when you want Autopilot to continue.' },
-  max_cycles: { kind: 'finished', action: 'The maximum was reached. Raise it in Settings and start again if you want more continuations.' },
-  usage_limit: { kind: 'fix', action: 'Wait until ChatGPT lifts the usage limit, then press Resume. Autopilot never retries on its own.' },
-  auth_required: { kind: 'fix', action: 'Log in to ChatGPT in that tab, open the conversation again, then press Resume.' },
-  page_error: { kind: 'fix', action: 'Check the ChatGPT page and reload it if needed; press Resume once the conversation works again.' },
-  conversation_changed: { kind: 'fix', action: 'Go back to the original conversation in that tab and press Resume, or press Stop and start in the new one.' },
+  user: { kind: 'resume', action: 'Press Resume to continue.' },
+  max_cycles: { kind: 'finished', action: 'To continue, raise Maximum cycles in Settings and start again.' },
+  usage_limit: { kind: 'fix', action: 'Wait until the limit is lifted, then press Resume. Autopilot never retries on its own.' },
+  auth_required: { kind: 'fix', action: 'Log in in the ChatGPT tab, open the conversation, then press Resume.' },
+  page_error: { kind: 'fix', action: 'Check the ChatGPT tab and reload it if needed, then press Resume.' },
+  conversation_changed: { kind: 'fix', action: 'Go back to the original conversation and press Resume, or press Stop and start in the new one.' },
   tab_closed: { kind: 'fix', action: 'Open the conversation again, then press Resume.' },
   browser_restarted: { kind: 'fix', action: 'Open the conversation again, then press Resume.' },
-  composer_has_text: { kind: 'fix', action: 'Send or clear the text in the message box, then press Resume. Your text was not touched.' },
-  submit_failed: { kind: 'fix', action: 'Check the ChatGPT page. If it keeps happening, copy the diagnostic report (Activity) for an issue. Then press Resume.' },
-  submission_uncertain: { kind: 'fix', action: 'Look at the conversation: if the continuation is not there, send it yourself. Then press Resume; that response is not answered again.' },
+  composer_has_text: { kind: 'fix', action: 'Send or clear your text, then press Resume. Your text was not changed.' },
+  submit_failed: { kind: 'fix', action: 'Check the ChatGPT tab, then press Resume. If it happens again, copy the diagnostic report.' },
+  submission_uncertain: { kind: 'fix', action: 'Check the conversation: if the continuation is missing, send it yourself. Then press Resume; that answer is not continued again.' },
   tab_unreachable: { kind: 'fix', action: 'Reload the ChatGPT tab, then press Resume.' },
-  unrecognized_notice: { kind: 'fix', action: 'Read the notice on the ChatGPT page and deal with it, then press Resume. If it is not in English, please report its exact text.' },
-  no_response: { kind: 'fix', action: 'Check the ChatGPT page for a notice or error; press Resume once ChatGPT answers again.' },
-  no_new_answer: { kind: 'fix', action: 'Check the last answer on the page (it may have ended in an error); press Resume to wait for the next finished answer.' },
-  marker_complete: { kind: 'finished', action: 'Check the result yourself: the status line is ChatGPT\'s own report, not a verification. Start again if more work is wanted.' },
-  marker_blocked: { kind: 'fix', action: 'Read ChatGPT\'s last answer and give it what it needs. Then press Resume (that answer is then continued once) or send it a message yourself.' },
-  marker_unclear: { kind: 'fix', action: 'Check the last line of ChatGPT\'s last answer: it must be exactly one of the three status lines. Then press Resume (that answer is then continued once).' },
+  unrecognized_notice: { kind: 'fix', action: 'Read the notice in the ChatGPT tab, then press Resume. If it is not in English, report its exact text.' },
+  no_response: { kind: 'fix', action: 'Check the ChatGPT tab for a notice, then press Resume.' },
+  no_new_answer: { kind: 'fix', action: 'Check the last answer (it may have ended with an error), then press Resume.' },
+  marker_complete: { kind: 'finished', action: 'Check the result yourself: the status line is ChatGPT\'s own report, not a verification. Start again for more work.' },
+  // Resume acknowledges only that answer (markerAcknowledgedKey): it gets at most one
+  // continuation, and later answers' status lines are checked again. Sending a message
+  // yourself does not resume Autopilot.
+  marker_blocked: { kind: 'fix', action: 'Read the last answer. Send ChatGPT what it needs yourself, then press Resume; or press Resume now to send the continuation to this answer once. Later answers are checked again.' },
+  marker_unclear: { kind: 'fix', action: 'Its last line must be exactly one of the three status lines. Press Resume to send the continuation to this answer once. Later answers are checked again.' },
 };
 
 export const HALT_KIND_LABEL: Record<HaltKind, string> = {
