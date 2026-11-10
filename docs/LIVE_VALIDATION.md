@@ -362,6 +362,31 @@ shapes fail safe: zero or several answer-content elements give "unclear"
   message id (not a count), and exactly one visible answer-content element is
   found. This confirms the selectors chosen from probe v2.
 
+### Run 6 — reported 2026-11-10 — PASS (M1 regression after #29)
+
+Purpose: #29 changed how responses are identified on the live page (the
+message unit and uuid-based keys instead of count-based ones). Run 6 checks
+that S1–S2 still behave.
+
+- Build: `main` after #29 (exact commit not stated). Interface language not
+  stated (earlier runs were es-ES).
+- Settings: maximum cycles **3**, **Stop on status marker off**, continuation
+  prompt `hey` (not the default prompt). Initial prompt: a plan for a to-do
+  list application (sent by the owner).
+
+| Row | Evidence | Result |
+|---|---|---|
+| S1 (one continuation per finished answer) | **Behavioural, user-reported:** "the test worked fine, no issues observed" | PASS |
+| S2 (stops at the maximum, no duplicates) | **Behavioural, user-reported:** same report; maximum 3 | PASS |
+| Response keys in `id:<uuid>` form, a different uuid per answer | **Diagnostic:** not reported for this run | NOT RECORDED |
+| `answeredResponses: 3` in the diagnostic report | **Diagnostic:** not reported for this run | NOT RECORDED |
+
+- Diagnostic evidence for the new identification comes from the M3-L0 repeat
+  (same build line): exactly one answer-content element and a uuid-based key
+  on the live page. Run 6 adds behavioural evidence that the full M1 loop
+  still works with it. It does not show the per-answer keys.
+- Activity log: not included in the report.
+
 ### Repeat M3-L0 after the live-structure fix
 
 1. `git pull`, `npm run build`, reload the extension in `chrome://extensions`,
