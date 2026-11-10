@@ -941,3 +941,36 @@ test('M3: no answer text can reach stored state; only the marker result is used'
   for (const word of ['AUTOPILOT STATUS', 'BLOCKED\n']) assert.ok(!stored.includes(word), word);
   assert.ok(stored.includes('ChatGPT reports it is blocked'), 'the log line is the extension\'s fixed text');
 });
+
+// --- Key-form change (count-based keys before the live-structure fix, id-based after) ---
+
+test('after an update that changes the key form, Resume never continues the response on the page; it waits for a new answer', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  // State as stored by the previous version: the response was answered under a count-based key,
+  // and a generation was seen (e.g. the continuation was sent and ChatGPT started).
+  const stored = structuredClone(h.storage.data[SESSION_KEY]) as SessionState;
+  h.storage.data[SESSION_KEY] = { ...stored, run: 'paused', reason: 'browser_restarted', generationSeen: true, answeredKeys: ['/c/abc|n:3'], tabId: TAB };
+  // The new version identifies the same, already answered response by its message id.
+  h.page.observation = obs('complete', key('a93353e3'));
+  ok(await h.ui('RESUME'));
+  await h.advance(60_000);
+  assert.equal(h.submits.length, 0, 'not answered a second time under its new key');
+  assert.ok((await h.session()).log.some((e) => e.message.startsWith('Response identification changed')));
+  // ChatGPT's next answer is continued as usual.
+  await h.respond('b0000000');
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+  assert.equal(h.submits[0]!.key, key('b0000000'));
+});
+
+test('with the same key form, Resume continues a response that finished while paused (unchanged)', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.see(obs('generating', key('m1')));
+  ok(await h.ui('PAUSE'));
+  await h.see(obs('complete', key('m1')));
+  ok(await h.ui('RESUME'));
+  await h.advance(5000);
+  assert.equal(h.submits.length, 1);
+});

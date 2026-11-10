@@ -180,6 +180,11 @@ function schedule(state: SessionState, key: string, settings: Timing, now: numbe
   };
 }
 
+/** "id" for a key built from a message id, "count" for one built from the message count. */
+export function keyForm(key: string): 'id' | 'count' {
+  return key.includes('|id:') ? 'id' : 'count';
+}
+
 // ---- Status marker (M3) -----------------------------------------------------
 
 /** The precheck failure for a status marker that must not be continued. */
@@ -440,6 +445,13 @@ export function transition(state: SessionState, event: SessionEvent): Transition
       if ((state.reason === 'marker_blocked' || state.reason === 'marker_unclear') && state.markerKey !== null) {
         // Resume is your explicit override for that one response's marker.
         next = log({ ...next, markerAcknowledgedKey: state.markerKey, generationSeen: true }, now, 'Resumed despite the status line; that answer is continued once.');
+      }
+      const lastAnswered = state.answeredKeys[state.answeredKeys.length - 1];
+      if (lastAnswered && event.observation.responseKey && keyForm(lastAnswered) !== keyForm(event.observation.responseKey) && next.markerAcknowledgedKey !== event.observation.responseKey) {
+        // The answered responses were recorded in another key form (an extension update
+        // changed id-based vs count-based keys), so "already answered" cannot be checked:
+        // wait for a new generation instead of continuing the response on the page.
+        next = log({ ...next, generationSeen: false }, now, 'Response identification changed since the last continuation; waiting for ChatGPT\'s next answer.');
       }
       const effects: SessionEffect[] = [];
       if (next.phase === 'submitting') {

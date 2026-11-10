@@ -31,6 +31,17 @@ const SKIPPED_TAGS: ReadonlySet<string> = new Set([
   'SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT',
 ]);
 const SKIPPED_ROLES: ReadonlySet<string> = new Set(['button', 'status', 'alert']);
+/**
+ * Attributes that mark non-answer content on the live page (probe v2,
+ * 2026-11-09): code-block widgets are divs, not pre/code, and ChatGPT marks
+ * interface chrome it leaves out of "copy" with data-markdown-copy="exclude".
+ * A subtree with any of these is never read.
+ */
+const SKIPPED_ATTRIBUTES: readonly (readonly [string, string | null])[] = [
+  ['data-client-defined-widget', null],
+  ['data-code-block', null],
+  ['data-markdown-copy', 'exclude'],
+];
 /** Elements that end a line. */
 const BLOCK_TAGS: ReadonlySet<string> = new Set([
   'P', 'DIV', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TR', 'TABLE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'HR', 'BR', 'DETAILS', 'SUMMARY', 'DL', 'DT', 'DD', 'FIGURE',
@@ -79,6 +90,10 @@ function skipped(element: MarkerNode): boolean {
   if (attr('aria-hidden') === 'true') return true;
   const role = attr('role');
   if (role !== null && SKIPPED_ROLES.has(role)) return true;
+  for (const [name, value] of SKIPPED_ATTRIBUTES) {
+    const actual = attr(name);
+    if (actual !== null && (value === null || actual === value)) return true;
+  }
   return !rendered(element);
 }
 

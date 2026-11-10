@@ -88,7 +88,15 @@ function asElement(value: unknown): ElementLike | null {
  * element that has one (a turn wrapper around the message), else on an
  * enclosing element. Null when there is none; never guessed.
  */
-export function messageId(element: ElementLike | undefined, attribute: string): string | null {
+export function messageId(element: ElementLike | undefined, attributes: string | readonly string[]): string | null {
+  for (const attribute of typeof attributes === 'string' ? [attributes] : attributes) {
+    const id = messageIdFor(element, attribute);
+    if (id) return id;
+  }
+  return null;
+}
+
+function messageIdFor(element: ElementLike | undefined, attribute: string): string | null {
   if (!element) return null;
   const own = element.getAttribute(attribute);
   if (own) return own;
@@ -168,7 +176,7 @@ export function readSignals(root: QueryRoot, selectors: SelectorConfig): { signa
       statusMarker: 'none',
       answerContentElements: 0,
     },
-    lastMessageId: messageId(last, selectors.messageIdAttribute),
+    lastMessageId: messageId(last, selectors.messageIdAttributes),
     lastMessage: last,
   };
 }

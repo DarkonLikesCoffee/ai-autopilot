@@ -50,7 +50,7 @@ export function fakePage(spec: PageSpec): QueryRoot {
   if (spec.send) map[s.sendControl[0]!] = [{}];
   if (spec.streaming) map[s.streamingMarker[0]!] = [{}];
   if (spec.assistantIds) {
-    map[s.assistantMessage[0]!] = spec.assistantIds.map((id) => ({ attrs: id ? { [s.messageIdAttribute]: id } : {} }));
+    map[s.assistantMessage[0]!] = spec.assistantIds.map((id) => ({ attrs: id ? { [s.messageIdAttributes[0]!]: id } : {} }));
   }
   if (spec.notices) map[s.noticeRegion[0]!] = spec.notices;
   return fakeRoot(map);

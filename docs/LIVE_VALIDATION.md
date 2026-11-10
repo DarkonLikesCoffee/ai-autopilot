@@ -280,6 +280,59 @@ conversation, ask ChatGPT to end its answers as described in each row.
 - v1 did not show where the answer sits relative to the heading. v2 (below)
   walks up to the turn.
 
+### Answer-structure probe v2 — reported 2026-11-09/10
+
+Captured on a finished answer (es-ES). Structure, text-free:
+
+```
+div[data-turn-key]
+ └ div[data-content-search-turn-key="fallback-turn-5"]
+   └ … div.group[data-talvt-turn-state="complete"] … div.block-BQZwFn (display:contents)
+     └ UNIT div[data-content-search-unit-key="fallback-turn-5:1:assistant"]
+        ├ h4.sr-only[data-conversation-role="assistant"]   (1×1; the extension's old match)
+        └ div > div[data-chatgpt-selection-message-id=<uuid>]
+             ├ span[hidden]
+             └ div[data-markdown-text-style="assistant-message"]      ← answer content
+                 └ … div[data-dil-message-id=<uuid>] > p, h3, ol, ul, inline code,
+                     div[data-client-defined-widget="code_block"]
+                       └ div[data-code-block="true"]
+                           ├ div[data-markdown-copy="exclude"] (icon, 4-char label, buttons)
+                           └ div … (code text; no pre/code elements)
+```
+
+Counts on the page: `[data-conversation-role="assistant"]` 8 (4 visible),
+`[data-conversation-role]` 16, `[data-message-id]` 0,
+`[data-message-author-role]` 0.
+
+Conclusions, now in the code:
+- The latest assistant message is the **unit**
+  (`[data-content-search-unit-key$=":assistant"]`).
+- Its id is `data-chatgpt-selection-message-id`.
+- Its answer content is `[data-markdown-text-style="assistant-message"]`.
+- Code-block widgets and `data-markdown-copy="exclude"` chrome are not answer
+  text.
+- Before this, the live response keys were count-based and changed with the
+  number of rendered turns.
+
+Not yet captured: an answer with a tool, sources or thinking section. Unknown
+shapes fail safe: zero or several answer-content elements give "unclear"
+(pause). A capture of one such answer is still welcome.
+
+### Repeat M3-L0 after the live-structure fix
+
+1. `git pull`, `npm run build`, reload the extension in `chrome://extensions`,
+   then reload the ChatGPT tab.
+2. Settings: turn on **Stop on status marker**; save.
+3. In that tab's console: `localStorage.setItem('chatgpt-autopilot:debug', '1')`,
+   then reload the tab.
+4. Send any message and let ChatGPT finish its answer.
+5. In the console, open the latest `[ChatGPT Autopilot] Page detection` entry.
+   **PASS:** `status: 'complete'`, `answerContentElements: 1`, and
+   `responseKey` ending in `id:` followed by a uuid (not `n:`).
+   **FAIL:** anything else. Run `docs/answer-structure-probe.js` again and send
+   both outputs.
+6. Then M3-L1 to M3-L6.
+
 ### Capturing the answer structure (for M3-L0)
 
 1. In the ChatGPT tab, wait until the latest answer is finished.

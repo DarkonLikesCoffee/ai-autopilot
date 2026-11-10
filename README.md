@@ -159,12 +159,12 @@ blocks and quotes, and acts only on these exact lines:
 - After a BLOCKED or unclear pause, **Resume** is your override for that one
   answer: it is continued once; later answers are checked again.
 - A status line is ChatGPT's own report, not proof that the work is correct.
-- **Not working on the live site yet (2026-11-09):** isolating the answer
-  content relied on a `.markdown` element, which the current ChatGPT page does
-  not have (live check M3-L0). With the setting on, every finished answer
-  therefore pauses as "unclear"; nothing is read or guessed. **Keep the setting
-  off** until this is fixed from a captured page structure
-  (`docs/answer-structure-probe.js`).
+- **Pending live confirmation:** the answer is now isolated using the live
+  ChatGPT structure captured on 2026-11-09: the message unit, its message id
+  and `[data-markdown-text-style="assistant-message"]`. Until live check M3-L0
+  passes again, treat the feature as experimental. If the answer content
+  cannot be isolated, every finished answer pauses as "unclear"; nothing is
+  guessed.
 
 ## AUTOPILOT.md
 
