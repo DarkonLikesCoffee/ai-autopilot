@@ -445,6 +445,25 @@ that S1–S2 still behave.
 The answer-content selector is then chosen from that structure, with a
 regression test built from it, and M3-L0 is repeated.
 
+## Release candidate on the installed ZIP (M5, R-3)
+
+Install the exact CI artifact as described in `docs/RELEASING.md` section 2
+(not a development build). Diagnostics on; Stop on status marker off;
+maximum cycles 2.
+
+| # | Do | Expect |
+|---|---|---|
+| P-L1 | Delay **5 s**. Start, send a message, and time from the moment the answer finishes (the panel shows *Waiting before continuation*) to the continuation appearing | The continuation appears after about 5 s (5–8 s allowing for the confirmation delay), **not** after 30 s |
+| P-L2 | Same with delay **20 s** | About 20 s, not 30 s or more |
+| P-L3 | S1–S2 with the default settings | As S1–S2 |
+| P-L4 | M3-L3 with the setting on | As M3-L3 |
+
+Background: per Chrome's documentation, alarms in packed (store or CRX)
+extensions have a 30 s minimum. A ZIP installed with *Load unpacked* is an
+unpacked extension. Either way, the delay is driven by the worker timer and a
+page ping, and the alarm is only a fallback (`test/controller.test.ts`: "with
+the alarm never firing …"). These rows check the real install.
+
 ## Not covered here
 
 Usage-limit and login notices cannot be produced on demand; record them when

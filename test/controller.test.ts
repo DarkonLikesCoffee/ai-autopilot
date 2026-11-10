@@ -974,3 +974,19 @@ test('with the same key form, Resume continues a response that finished while pa
   await h.advance(5000);
   assert.equal(h.submits.length, 1);
 });
+
+// --- M5 R-3: the delay never depends on chrome.alarms (packed builds may clamp alarms to 30 s) ---
+
+test('with the alarm never firing, the page ping alone sends the continuation when the delay ends', async () => {
+  const h = harness();
+  ok(await h.ui('START'));
+  await h.respond('m1');
+  const dueAt = h.scheduled.at(-1)!;
+  // Nothing calls handleDue (no alarm, no worker timer); only the page's own timer pings.
+  h.clock.now = dueAt - 1000;
+  await h.controller.handleContent(TAB, { type: 'DUE_PING' });
+  assert.equal(h.submits.length, 0, 'an early ping sends nothing');
+  h.clock.now = dueAt;
+  await h.controller.handleContent(TAB, { type: 'DUE_PING' });
+  assert.equal(h.submits.length, 1, 'sent at the configured delay, without any alarm');
+});

@@ -1,5 +1,10 @@
 name: CI
 
+# Read-only: CI builds and tests, and uploads the release ZIP as a workflow
+# artifact. It never creates tags or GitHub Releases (docs/RELEASING.md).
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -56,5 +61,20 @@ jobs:
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Browser end-to-end test
-        run: npm run e2e
+      # The exact artifact users would install: package, unzip, test that.
+      - name: Package the release ZIP
+        run: npm run package
+
+      - name: Browser end-to-end test on the unzipped release ZIP
+        run: |
+          mkdir -p "$RUNNER_TEMP/extension"
+          unzip -q release/*.zip -d "$RUNNER_TEMP/extension"
+          EXTENSION_DIR="$RUNNER_TEMP/extension" node e2e/extension.e2e.mjs
+
+      - name: Upload the tested release ZIP (artifact only, not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-autopilot-release-zip
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 30

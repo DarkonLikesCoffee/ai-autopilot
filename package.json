@@ -1,7 +1,7 @@
 {
   "name": "chatgpt-autopilot",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Chrome extension (MV3) that automatically sends a continuation prompt each time ChatGPT finishes a response.",
   "scripts": {
@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
     "check": "npm run typecheck && npm test && npm run build",
-    "e2e": "npm run build && node e2e/extension.e2e.mjs"
+    "e2e": "npm run build && node e2e/extension.e2e.mjs",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "@types/chrome": "0.3.7",
