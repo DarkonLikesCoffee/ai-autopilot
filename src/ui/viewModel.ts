@@ -81,6 +81,28 @@ const TONE: Record<StatusKey, Tone> = {
 };
 
 /**
+ * What the live region announces (M5 C-7), and the key that decides when: only
+ * a change of status, reason or guidance is announced, never the countdown ticking.
+ */
+export function announcement(view: PanelView, session: Pick<SessionState, 'reason'>): { key: string; text: string } {
+  const guidance = view.guidance ? ` ${view.guidance.label}: ${view.guidance.action}` : '';
+  return {
+    key: `${view.status}|${session.reason ?? ''}|${view.guidance?.kind ?? ''}`,
+    text: `${view.statusLabel}. ${view.detail}${guidance}`,
+  };
+}
+
+/** The control that takes over after a control action hides or disables the one pressed (M5 C-7). */
+export const FOCUS_NEXT: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'btn-start': ['btn-pause', 'btn-stop'],
+  'btn-pause': ['btn-resume', 'btn-stop'],
+  'btn-resume': ['btn-pause', 'btn-stop'],
+  'btn-stop': ['btn-start'],
+  'btn-gs-dismiss': [],
+  'btn-reset-confirm': ['btn-reset'],
+});
+
+/**
  * The Page line (M5 C-8), from structure signals only. The Send button counts as
  * missing only while the message box has text: whether ChatGPT shows it for an
  * empty box is not established live (docs/LIVE_VALIDATION.md, PC-L1), so an

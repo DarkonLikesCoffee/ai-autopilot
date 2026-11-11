@@ -5,6 +5,8 @@
   --text: #1c2128;
   --muted: #59636e;
   --border: #d1d9e0;
+  /* Text-field borders: at least 3:1 against the field and the card (WCAG 1.4.11). */
+  --control-border: #818b98;
   --accent: #105e48;
   --accent-text: #ffffff;
   --active: #1a7f37;
@@ -22,6 +24,7 @@
     --text: #e6edf3;
     --muted: #9198a1;
     --border: #3d444d;
+    --control-border: #7d8590;
     --accent: #2ea082;
     --accent-text: #0d1117;
     --active: #3fb950;
@@ -78,7 +81,7 @@ button[hidden] { display: none; }
 .facts dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 label { display: block; font-weight: 600; font-size: 13px; }
-textarea, input[type="number"] { width: 100%; font: inherit; font-weight: normal; margin-top: 4px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+textarea, input[type="number"] { width: 100%; font: inherit; font-weight: normal; margin-top: 4px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--control-border); background: var(--bg); color: var(--text); }
 textarea { resize: vertical; min-height: 120px; line-height: 1.4; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; align-items: start; }
 .field-error { color: var(--danger); font-size: 12px; margin: 4px 0 0; }
@@ -93,7 +96,8 @@ label.check { display: flex; align-items: center; gap: 6px; font-weight: 500; ma
 .log time { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .guidance { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
-.guidance[data-kind="fix"] { border-color: #d4a72c; }
+.guidance[data-kind="fix"] { border-color: var(--warning); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .getting-started[hidden] { display: none; }
 .steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
 a { color: var(--waiting); }

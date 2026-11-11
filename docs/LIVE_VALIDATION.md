@@ -469,10 +469,11 @@ maximum cycles 2.
 
 | # | Do | Expect |
 |---|---|---|
-| P-L1 | Delay **5 s**. Start, send a message, and time from the moment the answer finishes (the panel shows *Waiting before continuation*) to the continuation appearing | The continuation appears after about 5 s (5–8 s allowing for the confirmation delay), **not** after 30 s |
+| P-L1 | Delay **5 s**. Start, send a message, and time from the moment the answer finishes (the panel shows *Continuation in …*) to the continuation appearing | The continuation appears after about 5 s (5–8 s allowing for the confirmation delay), **not** after 30 s |
 | P-L2 | Same with delay **20 s** | About 20 s, not 30 s or more |
 | P-L3 | S1–S2 with the default settings | As S1–S2 |
 | P-L4 | M3-L3 with the setting on | As M3-L3 |
+| P-L5 | `docs/ACCESSIBILITY_CHECKLIST.md`, sections A–C (keyboard, screen reader, visual) | Every row PASS, or recorded with what happened (R-4) |
 
 Background: per Chrome's documentation, alarms in packed (store or CRX)
 extensions have a 30 s minimum. A ZIP installed with *Load unpacked* is an
