@@ -576,6 +576,53 @@ try {
   await sleep(500);
   check('17: Autopilot refuses to start on a page it does not recognize', (await session()).run === 'stopped' && /message box was not found/i.test(await panel.textContent('#banner')));
 
+  // ---- M5 C-7: accessibility (axe in both themes; keyboard actions keep focus; announcements) ----
+  await stop();
+  {
+    const a11yChat = await openConversation('/c/e2e-a11y');
+    await panel.evaluate(readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8'));
+    for (const id of ['settings', 'activity']) if (!(await panel.$eval(`#${id}`, (d) => d.open))) await panel.click(`#${id} summary`);
+    for (const scheme of ['light', 'dark']) {
+      await panel.emulateMedia({ colorScheme: scheme });
+      const result = await panel.evaluate(async () => {
+        const r = await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } });
+        const describe = (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`;
+        return {
+          serious: r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map(describe),
+          other: r.violations.filter((v) => v.impact !== 'serious' && v.impact !== 'critical').map(describe),
+        };
+      });
+      check(`C-7: axe reports no serious or critical WCAG 2.2 AA issue in the ${scheme} theme`, result.serious.length === 0, [...result.serious, ...result.other.map((o) => `minor: ${o}`)].join(' | '));
+    }
+    await panel.emulateMedia({ colorScheme: 'light' });
+    await a11yChat.bringToFront();
+    await panel.waitForFunction(() => !document.getElementById('btn-start').disabled);
+    const focused = () => panel.evaluate(() => document.activeElement?.id ?? '');
+    const announced = () => panel.textContent('#status-announce');
+    await panel.focus('#btn-start');
+    await panel.keyboard.press('Enter');
+    await panel.waitForFunction(() => !document.getElementById('btn-pause').hidden);
+    check('C-7: after Start (keyboard), focus moves to Pause', (await focused()) === 'btn-pause', await focused());
+    await waitFor('announcement', async () => /^Waiting for ChatGPT\./.test(await announced()), 3000).catch(() => {});
+    check('C-7: the status change is announced in the live region', /^Waiting for ChatGPT\./.test(await announced()), await announced());
+    await panel.keyboard.press('Enter');
+    await panel.waitForFunction(() => !document.getElementById('btn-resume').hidden);
+    check('C-7: after Pause, focus moves to Resume', (await focused()) === 'btn-resume', await focused());
+    await waitFor('pause announcement', async () => /^Paused\. Paused by you\. Resume when ready:/.test(await announced()), 3000).catch(() => {});
+    check('C-7: the pause and its guidance are announced', /^Paused\. Paused by you\. Resume when ready:/.test(await announced()), await announced());
+    await panel.keyboard.press('Enter');
+    await panel.waitForFunction(() => !document.getElementById('btn-pause').hidden);
+    check('C-7: after Resume, focus moves to Pause', (await focused()) === 'btn-pause', await focused());
+    await panel.focus('#btn-stop');
+    await panel.keyboard.press('Enter');
+    await panel.waitForFunction(() => !document.getElementById('btn-start').hidden);
+    check('C-7: after Stop, focus moves to Start', (await focused()) === 'btn-start', await focused());
+    const before = await announced();
+    await sleep(2500); // the countdown and refreshes keep running
+    check('C-7: nothing is announced without a status change', (await announced()) === before);
+    await a11yChat.close();
+  }
+
   // ---- M5 C-8: the Page line ----
   await stop();
   const pageText = () => panel.textContent('#f-page');

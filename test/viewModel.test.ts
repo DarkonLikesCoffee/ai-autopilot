@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { UiSnapshot } from '../src/shared/messages.ts';
 import { initialSession } from '../src/shared/session.ts';
-import { buildView, formatRemaining } from '../src/ui/viewModel.ts';
+import { announcement, buildView, FOCUS_NEXT, formatRemaining } from '../src/ui/viewModel.ts';
 import { testSettings } from './helpers/fixtures.ts';
 
 const tab = { tabId: 1, title: 'Build the app', conversation: '/c/abc' };
@@ -53,4 +53,27 @@ test('C-4: an unconnected ChatGPT tab shows the reload hint and Start is unavail
   const noTab = buildView(snap({}, { activeTab: null, activeTabConnected: null }), 1000);
   assert.match(noTab.startHint ?? '', /^Open a ChatGPT conversation/);
   assert.equal(buildView(snap({ run: 'running' }, { activeTabConnected: false }), 1000).startHint, null, 'no hint while running');
+});
+
+test('C-7: only a change of status, reason or guidance is announced, never the countdown', () => {
+  const at = (now: number, over: Parameters<typeof snap>[0]) => {
+    const s = snap(over);
+    return announcement(buildView(s, now), s.session);
+  };
+  const delay = { run: 'running' as const, phase: 'delay' as const, dueAt: 20_000, pendingKey: 'k' };
+  const first = at(1000, delay);
+  const later = at(5000, delay);
+  assert.equal(first.key, later.key, 'the countdown ticking is not a change');
+  assert.match(first.text, /^Continuation in 19s\. The answer is finished\./);
+  const paused = at(1000, { run: 'paused', reason: 'composer_has_text' });
+  assert.notEqual(paused.key, first.key);
+  assert.equal(paused.text, 'Paused. The message box already contained text. Fix first: Send or clear your text, then press Resume. Your text was not changed.');
+  assert.notEqual(at(1000, { run: 'paused', reason: 'user' }).key, paused.key, 'another reason is a change');
+});
+
+test('C-7: after a control action, focus moves to the control that replaces it', () => {
+  assert.deepEqual(FOCUS_NEXT['btn-start'], ['btn-pause', 'btn-stop']);
+  assert.deepEqual(FOCUS_NEXT['btn-pause'], ['btn-resume', 'btn-stop']);
+  assert.deepEqual(FOCUS_NEXT['btn-resume'], ['btn-pause', 'btn-stop']);
+  assert.deepEqual(FOCUS_NEXT['btn-stop'], ['btn-start']);
 });

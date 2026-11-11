@@ -4,7 +4,7 @@
 import type { UiRequest, UiResponse, UiSnapshot } from '../shared/messages.ts';
 import { LIMITS, type SettingsField } from '../shared/settings.ts';
 import type { Settings } from '../shared/types.ts';
-import { buildView, formatClock } from './viewModel.ts';
+import { announcement, buildView, FOCUS_NEXT, formatClock } from './viewModel.ts';
 import { FIELD_INPUT, fieldIssues, hasUnsavedChanges, parseForm, type FormValues } from './settingsForm.ts';
 
 const MARKUP = `
@@ -38,6 +38,7 @@ const MARKUP = `
     </div>
     <p id="start-hint" class="hint" hidden></p>
     <p id="banner" class="banner" role="status" hidden></p>
+    <p id="status-announce" class="sr-only" role="status" aria-live="polite"></p>
   </section>
 
   <section class="card">
@@ -87,7 +88,7 @@ const MARKUP = `
 
   <details class="card" id="activity">
     <summary><h2>Activity</h2></summary>
-    <ol id="log" class="log"></ol>
+    <ol id="log" class="log" tabindex="0" aria-label="Activity log, newest first"></ol>
     <div class="controls">
       <button id="btn-report" type="button">Copy diagnostic report</button>
     </div>
@@ -106,6 +107,8 @@ let snapshot: UiSnapshot | null = null;
 /** Local time when the snapshot arrived, to advance the countdown between refreshes. */
 let receivedAt = 0;
 let settingsDirty = false;
+/** The last announced status (M5 C-7); null until the first render. */
+let announcedKey: string | null = null;
 /** Set after a refused save: from then on, field messages follow the input. */
 let showFieldIssues = false;
 
@@ -151,7 +154,27 @@ async function copyReport(button: HTMLButtonElement): Promise<void> {
     }
   } finally {
     button.disabled = false;
+    restoreFocus(button);
   }
+}
+
+/** A control that can take focus now. */
+function focusable(id: string): HTMLElement | null {
+  const el = document.getElementById(id);
+  if (!el || (el as HTMLButtonElement).disabled || el.closest('[hidden]')) return null;
+  return el;
+}
+
+/**
+ * After an action, focus is never left on the page body (M5 C-7): it stays on the
+ * pressed control if it is still usable, else moves to the control that replaced
+ * it, else to the status line.
+ */
+function restoreFocus(button: HTMLButtonElement): void {
+  const active = document.activeElement;
+  if (active && active !== document.body && active !== button) return; // the user moved on
+  const target = focusable(button.id) ?? (FOCUS_NEXT[button.id] ?? []).map(focusable).find((el) => el !== null) ?? $('status-label');
+  target.focus();
 }
 
 async function act(message: UiRequest, button?: HTMLButtonElement): Promise<UiResponse> {
@@ -161,6 +184,7 @@ async function act(message: UiRequest, button?: HTMLButtonElement): Promise<UiRe
   showBanner(response.ok ? response.note ?? '' : response.error, response.ok ? 'info' : 'danger');
   if (button) button.disabled = false;
   render();
+  if (button) restoreFocus(button);
   return response;
 }
 
@@ -243,6 +267,12 @@ function render(): void {
   $('guidance-kind').textContent = view.guidance ? `${view.guidance.label}:` : '';
   $('guidance-action').textContent = view.guidance?.action ?? '';
   document.body.dataset.status = view.status;
+  const said = announcement(view, snapshot.session);
+  if (said.key !== announcedKey) {
+    // Only a real change is announced; the first render sets the baseline silently.
+    if (announcedKey !== null) $('status-announce').textContent = said.text;
+    announcedKey = said.key;
+  }
 
   const show = (id: string, visible: boolean, enabled = visible) => {
     const button = $<HTMLButtonElement>(id);
@@ -303,7 +333,8 @@ function init(): void {
   $('btn-resume').addEventListener('click', (e) => void act({ type: 'RESUME' }, e.currentTarget as HTMLButtonElement));
   $('btn-stop').addEventListener('click', (e) => void act({ type: 'STOP' }, e.currentTarget as HTMLButtonElement));
   $('btn-gs-dismiss').addEventListener('click', (e) => {
-    void act({ type: 'DISMISS_GETTING_STARTED' }, e.currentTarget as HTMLButtonElement).then(() => $('status-label').focus()); // the card is gone: focus stays in the panel
+    // The card is gone: restoreFocus moves focus to the status line.
+    void act({ type: 'DISMISS_GETTING_STARTED' }, e.currentTarget as HTMLButtonElement);
   });
   $('btn-report').addEventListener('click', (e) => void copyReport(e.currentTarget as HTMLButtonElement));
 
