@@ -8,7 +8,7 @@ explicit approval of the release candidate.
 
 1. Bump the version in `package.json`, `package-lock.json` and
    `static/manifest.json` (all three must match; `npm run package` and
-   `test/release.test.ts` fail otherwise). Update `CHANGELOG.md`.
+   `test/release.test.ts` fail otherwise). Update `CHANGELOG.md` and write `docs/releases/<version>.md`.
 2. Merge through the usual PR workflow. CI on `main` runs `check`, packages
    the ZIP, runs the browser E2E **on the unzipped ZIP**, and uploads that same
    ZIP as the workflow artifact `chatgpt-autopilot-release-zip`.
@@ -31,6 +31,7 @@ explicit approval of the release candidate.
 
 1. `git tag v<version> <release commit>` and push the tag.
 2. GitHub → Releases → *Draft a new release* for that tag; attach **the same
-   ZIP that was tested** (from the artifact, not a rebuild); paste the
-   `CHANGELOG.md` section as release notes.
+   ZIP that was tested** (from the artifact, not a rebuild); paste
+   `docs/releases/<version>.md` as release notes, with its verification
+   section filled in and its draft line removed.
 3. Record the release in `AUTOPILOT.md`.

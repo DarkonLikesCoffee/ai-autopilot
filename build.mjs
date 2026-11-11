@@ -13,6 +13,8 @@ const release = process.argv.includes('--release');
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 await cp(`${root}static`, outdir, { recursive: true });
+// The licence notice travels with every copy, including the release ZIP (D-1).
+await cp(`${root}LICENSE`, `${outdir}/LICENSE`);
 
 const options = {
   entryPoints: {

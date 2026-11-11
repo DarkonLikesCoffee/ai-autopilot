@@ -1,6 +1,7 @@
 {
   "name": "chatgpt-autopilot",
   "private": true,
+  "license": "MIT",
   "version": "0.3.0",
   "type": "module",
   "description": "Chrome extension (MV3) that automatically sends a continuation prompt each time ChatGPT finishes a response.",
