@@ -104,9 +104,9 @@ export const FOCUS_NEXT: Readonly<Record<string, readonly string[]>> = Object.fr
 
 /**
  * The Page line (M5 C-8), from structure signals only. The Send button counts as
- * missing only while the message box has text: whether ChatGPT shows it for an
- * empty box is not established live (docs/LIVE_VALIDATION.md, PC-L1), so an
- * empty box never raises a warning.
+ * missing only while the message box has text: live check PC-L1 (2026-11-11)
+ * found no Send button for an empty box and found it once text was typed
+ * (docs/LIVE_VALIDATION.md), so an empty box never raises a warning.
  */
 export function pageCheck(page: UiSnapshot['page']): PanelView['page'] {
   if (!page) return null;

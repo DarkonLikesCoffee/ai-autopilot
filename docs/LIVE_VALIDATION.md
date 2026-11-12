@@ -461,6 +461,14 @@ If the address always ends at `chatgpt.com`, the permission is removed in a
 follow-up PR (manifest, patterns, tests, `PRIVACY.md`). If ChatGPT stays at
 `chat.openai.com`, it is kept.
 
+**Result (owner, reported 2026-11-11): D7-L1 PASS.** `https://chat.openai.com/`
+always redirects to `chatgpt.com`. ChatGPT is therefore never used at the old
+address, and `chat.openai.com` was removed from the manifest (host permission
+and content-script matches), the tab patterns, the sender check and
+`PRIVACY.md` (`src/shared/chatgptUrl.ts`, `test/chatgptUrl.test.ts`, and an
+E2E check that a page served at `chat.openai.com` gets no content script and
+does not count as a ChatGPT tab).
+
 ## Release candidate on the installed ZIP (M5, R-3)
 
 Install the exact CI artifact as described in `docs/RELEASING.md` section 2
@@ -475,6 +483,31 @@ maximum cycles 2.
 | P-L4 | M3-L3 with the setting on | As M3-L3 |
 | P-L5 | `docs/ACCESSIBILITY_CHECKLIST.md`, sections A–C (keyboard, screen reader, visual) | Every row PASS, or recorded with what happened (R-4) |
 
+### Results — release candidate 0.3.0 (owner, reported 2026-11-11)
+
+Installed from the CI release ZIP. Recorded as reported; no timings or
+diagnostics were supplied, and none are inferred.
+
+| # | Result | Evidence |
+|---|---|---|
+| P-L1 (delay 5 s) | **PASS** | Owner: works on the installed ZIP (behavioural) |
+| P-L2 (delay 20 s) | **PASS** | Owner: works on the installed ZIP (behavioural) |
+| P-L3 (S1–S2 on the ZIP) | **NOT RUN** | Owner's decision: not considered necessary |
+| P-L4 (M3-L3 on the ZIP) | **NOT RUN** | Owner's decision: not considered necessary |
+| P-L5 (accessibility checklist) | **NOT RUN** | Owner's decision: the manual checklist is not performed |
+
+What this leaves unverified on the installed ZIP:
+- **P-L3:** the full M1 loop with the default settings. It was verified live
+  on development builds (Runs 1–6, latest Run 6 after #29), and P-L1/P-L2 show
+  continuations being sent from the ZIP. The ZIP differs from the development
+  build only in having no source maps; the E2E runs on the unzipped ZIP in CI.
+- **P-L4:** Stop on status marker stopping on `MILESTONE COMPLETE`. Verified
+  live on a development build (M3-L3, 2026-11-10) and in the E2E on the ZIP.
+- **P-L5:** the manual keyboard, screen-reader and visual checks (R-4). Only
+  the automated part exists: axe-core finds no WCAG 2.2 AA violations in
+  either theme, and the E2E checks keyboard focus and announcements. Nothing
+  has been checked by a person with a screen reader.
+
 Background: per Chrome's documentation, alarms in packed (store or CRX)
 extensions have a 30 s minimum. A ZIP installed with *Load unpacked* is an
 unpacked extension. Either way, the delay is driven by the worker timer and a
@@ -484,8 +517,8 @@ the alarm never firing …"). These rows check the real install.
 ## Page check (M5 C-8, owner, one observation)
 
 The panel's *Page* line counts a missing Send button as a problem only while
-the message box has text, because it is not established whether ChatGPT shows
-the Send button for an empty box (it may show a voice button instead).
+the message box has text, because ChatGPT may not show the Send button for an
+empty box (it may show a voice button instead).
 
 | # | Steps | Record |
 |---|---|---|
@@ -493,6 +526,13 @@ the Send button for an empty box (it may show a voice button instead).
 
 If PC-L1 shows the Send button with an empty box, the empty-box exception can
 be removed.
+
+**Result (owner, reported 2026-11-11): PC-L1 PASS.** With an empty message box
+the Page line said the Send button is checked once the message box has text,
+so no Send button was found for an empty box. After typing, the Page line
+recognized the Send button. **The empty-box exception is kept** (owner's
+instruction): without it, every idle page would be reported as not
+recognized.
 
 ## Not covered here
 

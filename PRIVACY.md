@@ -66,14 +66,15 @@ Code: `src/shared/storage.ts` (keys, including `autopilot.gettingStarted`), `src
 | Permission | Why |
 |---|---|
 | `https://chatgpt.com/*` | Observe the page and type and send the continuation in your ChatGPT tab |
-| `https://chat.openai.com/*` | The older ChatGPT address. Kept until it is confirmed that it only redirects to chatgpt.com (decision D-7) |
 | `storage` | Settings and session state (table above) |
 | `alarms` | A fallback wake-up for the end of the delay if Chrome stops the background worker |
 | `notifications` | Required by the manifest. Whether notifications are *shown* is your choice (setting *Notifications*) |
 | `sidePanel` | The side panel view |
 
 The extension does not request `tabs`, `scripting`, `cookies`, `history`,
-`webRequest` or any other host.
+`webRequest` or any other host. The older address `chat.openai.com` is not
+requested: it always redirects to `chatgpt.com` (decision D-7, checked live
+2026-11-11).
 
 ## Deleting everything
 

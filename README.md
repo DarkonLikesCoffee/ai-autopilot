@@ -197,7 +197,7 @@ for how long, and how to delete it, with the code for each claim.
   as **ChatGPT conversation and message ids** (no text), so an answer is never
   continued twice; the last 40 activity-log lines (written by the extension);
   whether you dismissed Getting started. Uninstalling removes all of it.
-- **Permissions:** `chatgpt.com` (and the older `chat.openai.com`), `storage`,
+- **Permissions:** `chatgpt.com`, `storage`,
   `alarms` (a fallback timer), `notifications` (required by the manifest;
   whether notifications are shown is your setting), `sidePanel`.
 

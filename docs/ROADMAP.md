@@ -73,9 +73,10 @@ Do not begin this milestone until M1 and the relevant M2 foundations are reliabl
 ## M5 — UX, onboarding and release quality — current: release candidate (owner, 2026-11-10: before M4)
 
 Approved design: `docs/design/m5-release-quality.md`. Implementation C-1 to C-9
-done (2026-11-11). **Not complete** until the owner's release-candidate checks
-on the installed ZIP (P-L1 to P-L5), D7-L1 and PC-L1 are recorded and the owner
-approves publishing 0.3.0.
+done (2026-11-11). Release-candidate checks recorded 2026-11-11: P-L1, P-L2,
+D7-L1 and PC-L1 PASS; P-L3, P-L4 and P-L5 NOT RUN (owner's decision).
+`chat.openai.com` removed (D-7). **Not complete** until the owner decides
+whether to publish 0.3.0.
 
 **Outcome:** A new user can understand the extension and operate it safely.
 
