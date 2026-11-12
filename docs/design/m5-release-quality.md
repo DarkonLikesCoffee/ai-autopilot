@@ -149,7 +149,7 @@ Each step is one focused PR with tests, through the usual CI and auto-merge work
 | D-4 | Distribution | **GitHub Releases only** | Installed by unzipping and *Load unpacked* |
 | D-5 | axe-core | **Yes**, a pinned dev dependency | Runs in the E2E; complements, never replaces, the manual checks (R-4) |
 | D-6 | UI language | **English for 0.3.0** | Documented; ChatGPT interface languages verified live: Spanish |
-| D-7 | `chat.openai.com` | **Audit first; remove if demonstrably unnecessary** | See C-1. The audit needs one owner observation, because OpenAI sites are not reachable from cloud sessions |
+| D-7 | `chat.openai.com` | **Audit first; remove if demonstrably unnecessary** — done: D7-L1 (2026-11-11) showed it always redirects to chatgpt.com, so it was removed | See C-1. The audit needs one owner observation, because OpenAI sites are not reachable from cloud sessions |
 
 ## 7. Additional requirements (owner, 2026-11-10)
 

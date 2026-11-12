@@ -4,25 +4,16 @@ import { createController, type Scheduler, type TabAccess } from './controller.t
 import { isContentReport, isPageObservation, isSubmitResult, isUiRequest, type ContentCommand, type TabInfo } from '../shared/messages.ts';
 import { createLogger } from '../shared/logger.ts';
 import { conversationPath } from '../shared/session.ts';
+import { CHATGPT_PATTERNS, isChatgptUrl } from '../shared/chatgptUrl.ts';
 import { loadSession } from '../shared/storage.ts';
 import type { SessionState } from '../shared/types.ts';
 import type { SendDiagnostic } from '../content/sendDiagnostics.ts';
 
 const log = createLogger('background');
-const CHATGPT_PATTERNS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
 const ALARM = 'autopilot-due';
 /** Cleared by Chrome only when the browser restarts; tells a browser restart from a worker restart. */
 const ALIVE_KEY = 'autopilot.browserSession';
 
-export function isChatgptUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const { protocol, hostname } = new URL(url);
-    return protocol === 'https:' && (hostname === 'chatgpt.com' || hostname === 'chat.openai.com');
-  } catch {
-    return false;
-  }
-}
 
 function info(tab: chrome.tabs.Tab | undefined): TabInfo | null {
   if (!tab || tab.id === undefined || !isChatgptUrl(tab.url)) return null;
@@ -42,7 +33,7 @@ const tabs: TabAccess = {
     }
   },
   async findConversationTab(path) {
-    const all = await chrome.tabs.query({ url: CHATGPT_PATTERNS });
+    const all = await chrome.tabs.query({ url: [...CHATGPT_PATTERNS] });
     const matches = all.filter((tab) => tab.url && conversationPath(tab.url) === path);
     return matches.length === 1 ? matches[0]?.id ?? null : null;
   },

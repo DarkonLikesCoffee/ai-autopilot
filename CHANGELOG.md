@@ -59,6 +59,8 @@ The first public release. Install it from the release ZIP
 
 - No server, analytics or telemetry. [PRIVACY.md](PRIVACY.md) lists exactly
   what is read and kept, where, for how long, and how to delete it.
+- Site access: `chatgpt.com` only. The older `chat.openai.com` is not
+  requested, because it always redirects to `chatgpt.com`.
 
 ### Known limitations
 

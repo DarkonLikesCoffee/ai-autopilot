@@ -21,7 +21,7 @@ test('C-8: a recognized page lists what was found', () => {
 
 test('C-8: a missing Send button is reported only while the message box has text', () => {
   const empty = pageCheck(page({ sendControlFound: false }));
-  assert.equal(empty?.recognized, true, 'an empty box is not a warning (not established live, PC-L1)');
+  assert.equal(empty?.recognized, true, 'an empty box is not a warning: live, ChatGPT shows no Send button for it (PC-L1)');
   assert.match(empty?.text ?? '', /The Send button is checked once the message box has text\.$/);
   const typed = pageCheck(page({ sendControlFound: false, composerHasText: true }));
   assert.deepEqual(typed, { recognized: false, text: 'This ChatGPT page is not fully recognized (Send button not found). Copy the diagnostic report from Activity when you report it.' });

@@ -138,6 +138,8 @@ async function launch() {
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
   });
   await context.route('https://chatgpt.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_CHATGPT }));
+  // D-7: the same page at the obsolete address, which Autopilot must ignore.
+  await context.route('https://chat.openai.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_CHATGPT }));
   let [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent('serviceworker');
   return { context, worker, extensionId: new URL(worker.url()).host };
@@ -621,6 +623,23 @@ try {
     await sleep(2500); // the countdown and refreshes keep running
     check('C-7: nothing is announced without a status change', (await announced()) === before);
     await a11yChat.close();
+  }
+
+  // ---- D-7: chat.openai.com is no longer a ChatGPT address for Autopilot ----
+  {
+    const oldDomain = await context.newPage();
+    await oldDomain.goto('https://chat.openai.com/c/e2e-old-domain');
+    await oldDomain.waitForSelector('#prompt-textarea');
+    await oldDomain.bringToFront();
+    await sleep(800);
+    const reach = await worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      try { await chrome.tabs.sendMessage(tab.id, { type: 'GET_OBSERVATION' }); return 'answered'; } catch { return 'no content script'; }
+    });
+    check('D-7: no content script runs on chat.openai.com', reach === 'no content script', reach);
+    const hint = await waitFor('start hint', async () => /^Open a ChatGPT conversation/.test(await panel.textContent('#start-hint')), 5000).catch(() => false);
+    check('D-7: a chat.openai.com tab is not taken for a ChatGPT tab (Start unavailable)', hint && await panel.$eval('#btn-start', (b) => b.disabled));
+    await oldDomain.close();
   }
 
   // ---- M5 C-8: the Page line ----
