@@ -197,10 +197,10 @@ Design: `docs/design/m3-stop-protocol.md`, **approved by the owner 2026-11-06** 
 See `docs/ROADMAP.md` for milestone details. Current order:
 
 1. ~~**P0 — M1 reliability**~~ — **complete 2026-11-05.**
-2. ~~**P1 — M2 recovery and observability**~~: **complete 2026-11-06** (T10, T11, live check).
-3. ~~**P1 — M3 stopping and control**~~: **complete 2026-11-10** (section 5c).
-4. **P2 — M4 multi-project sessions:** independent sessions and clear session identity, only after single-session reliability.
-5. **M5 product polish (current).** Approved 2026-11-10: `docs/design/m5-release-quality.md` (decisions D-1 to D-7, requirements R-1 to R-5).
+2. ~~**P1 — M2 recovery and observability**~~ — **complete 2026-11-06** (T10, T11, live check).
+3. ~~**P1 — M3 stopping and control**~~ — **complete 2026-11-10** (section 5c).
+4. **P2 — M4 multi-project sessions (current):** independent sessions and clear session identity. Begin with T8 design/threat/race analysis; implementation follows approval of the design.
+5. ~~**M5 UX, onboarding and release quality**~~ — **complete with 0.3.0 publication (owner-confirmed 2026-11-19)**. Remaining live checks P-L3/P-L4/P-L5 are disclosed, not treated as passing.
 6. **Later exploration:** advanced automation only where it preserves the deterministic boundary and user control.
 
 ## 7. Actionable task queue
@@ -216,8 +216,8 @@ Choose the highest-priority task that remains valid after inspecting the current
 - [x] **T7 (P1, M3): Structured stop protocol.** Implemented 2026-11-06 in #24 (reader), #25 (wiring) and #26 (E2E, docs); live fixes #27–#29; live validation M3-L0 to L6 passed 2026-11-10. Status text is not proof that the work itself is correct.
 - [x] **T10 (P1, M2): Diagnostic report export.** Done 2026-11-05. Panel button; read-only `GET_REPORT` (never queued behind a send, never changes state); the content script now always keeps its last send-step record (text-free) for the report and logs it only with diagnostics on. If the clipboard is unavailable, the report is shown in a read-only box for manual copying.
 - [x] **T11 (P1, M2): Recoverable vs terminal.** Done 2026-11-05 (`src/shared/guidance.ts`; a `Record<HaltReason, …>`, so a new reason without guidance does not compile).
-- [ ] **T8 (P2): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation.
-- [ ] **T9 (P3): UX and release polish.** Improve onboarding, accessibility, settings clarity and packaging after core reliability.
+- [ ] **T8 (P2, M4): Multi-session design.** Write a design proposal and threat/race-condition analysis before implementation; review the proposal before implementation.
+- [x] **T9 (P3, M5): UX and release polish.** Complete C-1 to C-9, CI packaging and installed-ZIP validation. Release 0.3.0 published by owner on 2026-11-19; P-L3/P-L4/P-L5 remain explicitly NOT RUN.
 
 A task may be reordered only with repository evidence and a note in the decisions/history sections.
 
@@ -320,12 +320,14 @@ Record actual results for every task. Use `NOT RUN — reason` when unavailable.
 | 2026-11-11 | M5 C-9, documentation: README rewritten as a user guide (install from the release ZIP, first use, panel, safeguards, Stop on status marker, the project's AUTOPILOT.md, privacy summary, troubleshooting, known limitations; the stale M3 "pending live confirmation" note removed). Troubleshooting lists every halt with the panel's exact reason, label and guidance (`test/docs.test.ts` fails if they drift), plus other problems; one wrong claim about how the two delays combine was caught against the code and corrected before commit. Developer material moved to `docs/DEVELOPMENT.md`. `LICENSE` (MIT, copyright DarkonLikesCoffee, D-1), copied into every build so the ZIP carries it; `license` in package.json. `CHANGELOG.md` (0.3.0, release candidate; 0.1.0/0.2.0 were development-only) and draft release notes `docs/releases/0.3.0.md`. RELEASING updated. **No tag, no release.** | [VERIFIED] in tests below. | `npm run check` PASS (225 tests); `npm run e2e` PASS (development build and the unzipped release ZIP). |
 | 2026-11-11 | Release-candidate results recorded as reported by the owner, behavioural only (no timings or diagnostics supplied, none inferred): **P-L1 PASS, P-L2 PASS** (5 s and 20 s delays work on the installed ZIP); **P-L3, P-L4, P-L5 NOT RUN** (owner's decision); **D7-L1 PASS** (`chat.openai.com` always redirects to chatgpt.com); **PC-L1 PASS** (empty box: "checked once the message box has text"; after typing: Send button recognized). D-7 applied: `chat.openai.com` removed from the manifest (host permission, content-script matches), the tab patterns and the sender check, now in `src/shared/chatgptUrl.ts` (https `chatgpt.com` exactly); PRIVACY.md, README, CHANGELOG and the release notes updated. PC-L1 exception kept. New `test/chatgptUrl.test.ts` and an E2E check that a page at `chat.openai.com` gets no content script and is not taken for a ChatGPT tab. **No tag, no release.** | [VERIFIED] owner report (behavioural) and tests below. | `npm run check` PASS; `npm run e2e` PASS (development build and the unzipped release ZIP). |
 
+| 2026-11-19 | Owner confirmed GitHub Release 0.3.0 published. Publication decision closed; M5 release status moved from candidate to published. P-L3/P-L4/P-L5 remain NOT RUN and disclosed. M4 becomes current; next task T8 is the multi-session design/threat/race-condition proposal. | [VERIFIED] owner report. | Documentation update; no code checks required. |
 ## 12. Exact next action
 
-- **Owner:** the publication decision for 0.3.0. Release-candidate status: P-L1 PASS, P-L2 PASS, D7-L1 PASS, PC-L1 PASS; **P-L3, P-L4, P-L5 NOT RUN** (owner's decision; what each leaves unverified is listed in `docs/LIVE_VALIDATION.md`). Because this PR changes the manifest, the ZIP to publish is the CI artifact of the commit that includes it; P-L1/P-L2 were run on the ZIP before it.
-- **Cloud:** nothing in M5 until the owner decides. On approval, follow `docs/RELEASING.md` section 3 only as the owner directs.
-- **Never without the owner's explicit approval:** tagging `v0.3.0` or publishing a GitHub Release.
-- **Reply status:** `AUTOPILOT STATUS: BLOCKED` (the only remaining M5 step is the owner's decision whether to publish 0.3.0)
+- **Current milestone:** M4 — Multiple independent project sessions (P2).
+- **Next task:** T8 — write the M4 design proposal and threat/race-condition analysis before implementation. Identify session binding, state isolation, duplicate-tab handling, recovery, cleanup and UI/control requirements. Do not begin implementation until the design is reviewed.
+- **Release:** 0.3.0 published on 2026-11-19 (owner-confirmed). Release publication decision is complete.
+- **Release-candidate disclosure:** P-L1, P-L2, D7-L1 and PC-L1 PASS; **P-L3, P-L4 and P-L5 NOT RUN**. These remain disclosed in the release notes/live validation; publication does not convert them into passes.
+- **Reply status:** `AUTOPILOT STATUS: CONTINUE` — proceed with T8, not release work.
 
 ## 13. Update protocol
 
