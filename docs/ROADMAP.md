@@ -24,19 +24,14 @@ Work areas:
 
 Exit criteria are defined in `AUTOPILOT.md`. Fake-page tests alone are insufficient evidence for live compatibility.
 
-## M2 — Recovery and observability (P1) — current
+## M2 — Recovery and observability (P1) — complete 2026-11-06
 
-Much of this was delivered during M1 (stage log, text-free diagnostics, restart recovery, schema tests). Remaining: an exportable text-free report and a recoverable-vs-terminal distinction (see `AUTOPILOT.md` section 5b).
+Delivered: text-free diagnostic report export, recoverable-vs-terminal guidance,
+stage history, recovery tests and live owner check. See the M2 evidence in
+`AUTOPILOT.md`.
 
-**Outcome:** Users and developers can understand what happened and recover from expected browser lifecycle events.
-
-Potential work:
-- A concise event history with timestamps and explicit stages: generation observed, completion confirmed, delay scheduled, submission attempted, submission confirmed, paused/stopped.
-- Diagnostics that explain the reason for every pause/error without capturing conversation text.
-- Robust recovery after service-worker suspension, browser restart, extension update and stale storage.
-- Storage schema/version migration tests.
-- Clear distinction between a recoverable pause and a terminal error.
-- Exportable diagnostic report that contains technical state only and excludes conversation contents and secrets.
+**Outcome:** Users and developers can understand what happened and recover from
+expected browser lifecycle events.
 
 Do not add telemetry or a remote backend just to obtain diagnostics.
 
@@ -56,7 +51,9 @@ Explore:
 
 Important limitation: a status marker is a control signal, not proof that the underlying code or milestone is correct. Verification still belongs to tests, repository state and human judgment. Do not make this feature a substitute for M1 reliability.
 
-## M4 — Multiple independent project sessions (P2)
+## M4 — Multiple independent project sessions (P2) — current
+
+Next task: T8, design proposal and threat/race-condition analysis before implementation.
 
 **Outcome:** A user can manage more than one project/conversation without cross-contamination.
 
@@ -70,23 +67,16 @@ Before implementation, design:
 
 Do not begin this milestone until M1 and the relevant M2 foundations are reliable.
 
-## M5 — UX, onboarding and release quality — current: release candidate (owner, 2026-11-10: before M4)
+## M5 — UX, onboarding and release quality — complete (0.3.0 published 2026-11-19)
 
 Approved design: `docs/design/m5-release-quality.md`. Implementation C-1 to C-9
-done (2026-11-11). Release-candidate checks recorded 2026-11-11: P-L1, P-L2,
-D7-L1 and PC-L1 PASS; P-L3, P-L4 and P-L5 NOT RUN (owner's decision).
-`chat.openai.com` removed (D-7). **Not complete** until the owner decides
-whether to publish 0.3.0.
+completed 2026-11-11. Owner published the 0.3.0 release on 2026-11-19.
+Installed-ZIP verification: P-L1, P-L2, D7-L1 and PC-L1 PASS; P-L3, P-L4
+and P-L5 remain **NOT RUN** and are disclosed in the release notes.
 
-**Outcome:** A new user can understand the extension and operate it safely.
-
-Potential work:
-- First-run onboarding and explanation of required ChatGPT/GitHub setup.
-- Clear status labels and accessible controls.
-- Better settings validation and sensible presets.
-- Export/import settings if justified.
-- Packaging, versioning, release notes and installation documentation.
-- Browser compatibility statement based on actual tests.
+**Outcome:** A new user can understand the extension and operate it safely. M5
+work is complete for this release; remaining live checks are disclosed follow-up,
+not release blockers.
 
 ## Later exploration — Advanced automation
 
